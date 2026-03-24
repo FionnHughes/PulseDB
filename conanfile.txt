@@ -1,0 +1,10 @@
+[requires]
+boost/1.84.0
+lz4/1.9.4
+nlohmann_json/3.11.3
+sqlite3/3.44.2
+gtest/1.14.0
+
+[generators]
+CMakeDeps
+CMakeToolchain
