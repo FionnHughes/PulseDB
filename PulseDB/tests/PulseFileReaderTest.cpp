@@ -32,7 +32,6 @@ protected:
     pulsedb::PulseFileReader reader{ test_filepath };
 };
 
-
 TEST_F(PulseFileReaderTest, FullQuery) {
     auto results = reader.query(base_ts, base_ts + 59000);
 
