@@ -1,6 +1,8 @@
 #include <iostream>
 #include <chrono>
 
+#include "lz4.h"
+
 #include "PulseFileReader.h"
 
 pulsedb::PulseFileReader::PulseFileReader(const std::string& filepath) {
@@ -50,14 +52,24 @@ std::vector<pulsedb::MetricReading> pulsedb::PulseFileReader::query(int64_t from
 			m_file.read(compressed_buf.data(), entry.compressed_size);
 			if (!m_file.good()) continue;
 
-			const char* ptr = compressed_buf.data();
+			uint32_t max_uncompressed_size = sizeof(ChunkHeader) + (m_header.readings_per_chunk * 10);
+
+			std::vector<char> uncompressed_buf(max_uncompressed_size);
+
+			int decompressed_size = LZ4_decompress_safe(
+				compressed_buf.data(), 
+				uncompressed_buf.data(), 
+				entry.compressed_size, 
+				max_uncompressed_size
+			);
+
+			if (decompressed_size <= 0) continue;
+
+			const char* ptr = uncompressed_buf.data();
 
 			ChunkHeader chunk_header;
 			memcpy(&chunk_header, ptr, sizeof(ChunkHeader));
 			ptr += sizeof(ChunkHeader);
-
-			std::vector<pulsedb::MetricReading> readings;
-			readings.reserve(chunk_header.reading_count);
 
 			for (uint16_t j = 0; j < chunk_header.reading_count; j++) {
 				uint16_t delta;
@@ -69,12 +81,8 @@ std::vector<pulsedb::MetricReading> pulsedb::PulseFileReader::query(int64_t from
 				memcpy(&r.value, ptr, sizeof(r.value));
 				ptr += sizeof(r.value);
 
-				readings.push_back(r);
-			}
-
-			for (auto& reading : readings) {
-				if (reading.timestamp_ms >= from_ms && reading.timestamp_ms <= to_ms) {
-					results.push_back(reading);
+				if (r.timestamp_ms >= from_ms && r.timestamp_ms <= to_ms) {
+					results.push_back(r);
 				}
 			}
 		}
