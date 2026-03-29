@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <fstream>
+#include "lz4.h"
 #include "storage/PulseFileWriter.h"
 
 class PulseFileWriterTest : public ::testing::Test {
@@ -58,27 +59,47 @@ TEST_F(PulseFileWriterTest, IndexEntryIsCorrect) {
 
     EXPECT_EQ(chunk_index_entry.chunk_start_ts, 1700000000000);
     EXPECT_EQ(chunk_index_entry.byte_offset, 23104);
-    EXPECT_EQ(chunk_index_entry.compressed_size, 616);
+    EXPECT_LT(chunk_index_entry.compressed_size, 616u);
+    EXPECT_GT(chunk_index_entry.compressed_size, 0u);
 }
 
 TEST_F(PulseFileWriterTest, ChunkDataIsCorrect) {
     std::ifstream file(test_filepath, std::ios::binary);
-    file.seekg(23104, std::ios::beg);
+
+    // read compressed size from index entry
+    file.seekg(64, std::ios::beg);
+    ChunkIndexEntry entry{};
+    file.read(reinterpret_cast<char*>(&entry), sizeof(entry));
+
+    // read compressed bytes
+    file.seekg(entry.byte_offset, std::ios::beg);
+    std::vector<char> compressed(entry.compressed_size);
+    file.read(compressed.data(), entry.compressed_size);
+
+    // decompress
+    uint32_t max_uncompressed = sizeof(ChunkHeader) + (60 * 10);
+    std::vector<char> uncompressed(max_uncompressed);
+    int result = LZ4_decompress_safe(compressed.data(), uncompressed.data(), entry.compressed_size, max_uncompressed);
+    ASSERT_GT(result, 0);
+
+    const char* ptr = uncompressed.data();
 
     ChunkHeader chunk_header{};
-    file.read(reinterpret_cast<char*>(&chunk_header), sizeof(chunk_header));
+    memcpy(&chunk_header, ptr, sizeof(ChunkHeader));
+    ptr += sizeof(ChunkHeader);
 
-    EXPECT_EQ(chunk_header.base_timestamp_ms, 1700000000000);
+    EXPECT_EQ(chunk_header.base_timestamp_ms, base_ts);
     EXPECT_EQ(chunk_header.reading_count, 60);
     EXPECT_EQ(chunk_header.reserved, 0x0000);
-    EXPECT_EQ(chunk_header.uncompressed_size, 616);
+    EXPECT_EQ(chunk_header.uncompressed_size, 616u);
 
-    uint16_t first_delta = 0;
-    file.read(reinterpret_cast<char*>(&first_delta), sizeof(first_delta));
+    uint16_t first_delta;
+    memcpy(&first_delta, ptr, sizeof(first_delta));
+    ptr += sizeof(first_delta);
     EXPECT_EQ(first_delta, 0);
 
-    double first_value = 0.0;
-    file.read(reinterpret_cast<char*>(&first_value), sizeof(first_value));
+    double first_value;
+    memcpy(&first_value, ptr, sizeof(first_value));
     EXPECT_DOUBLE_EQ(first_value, 10.0);
 }
 // cd C:\Users\fionn\git\.full_projects\VScpp\PulseDB\build\PulseDB\Release
