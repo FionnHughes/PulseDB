@@ -30,10 +30,6 @@ protected:
     int64_t base_ts = 1700000000000;
 };
 
-TEST(DummyTest, AlwaysPasses) {
-    EXPECT_EQ(1 + 1, 2);
-}
-
 TEST_F(PulseFileWriterTest, HeaderIsCorrect) {
     std::ifstream file(test_filepath, std::ios::binary);
     ASSERT_TRUE(file.is_open());
@@ -85,4 +81,5 @@ TEST_F(PulseFileWriterTest, ChunkDataIsCorrect) {
     file.read(reinterpret_cast<char*>(&first_value), sizeof(first_value));
     EXPECT_DOUBLE_EQ(first_value, 10.0);
 }
-//C:\Users\fionn\git\.full_projects\VScpp\PulseDB\build\PulseDB\Release\PulseDBTests.exe
+// cd C:\Users\fionn\git\.full_projects\VScpp\PulseDB\build\PulseDB\Release
+// .\pulsedb_tests.exe

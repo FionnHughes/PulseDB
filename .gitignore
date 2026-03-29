@@ -2,6 +2,10 @@
 build/
 out/
 
+# Private files
+Spec.md
+Spec.html
+
 # VS generated files
 .vs/
 *.user
