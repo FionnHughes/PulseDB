@@ -1,6 +1,8 @@
 #include <iostream>
 #include <chrono>
 
+#include "lz4.h"
+
 #include "PulseFileWriter.h"
 
 static_assert(sizeof(FileHeader) == 64, "FileHeader size mismatch");
@@ -76,15 +78,28 @@ bool pulsedb::PulseFileWriter::compress_and_write_chunk() {
 		std::memcpy(uncompressed.data() + offset, &reading.value, sizeof(reading.value));
 		offset += sizeof(reading.value);
 	}
+	int max_compressed_size = LZ4_compressBound(uncompressed_size);
+	std::vector<char> compressed(max_compressed_size);
+
+	int compressed_size = LZ4_compress_default(
+		reinterpret_cast<const char*>(uncompressed.data()), 
+		compressed.data(), 
+		uncompressed_size, 
+		max_compressed_size
+	);
+
+	if (compressed_size <= 0) return false;
+
 	uint32_t chunk_byte_offset = static_cast<uint32_t>(m_file.tellp());
-	m_file.write(reinterpret_cast<const char*>(uncompressed.data()), uncompressed.size());
+	m_file.write(reinterpret_cast<const char*>(compressed.data()), compressed.size());
 	if (!m_file.good()) return false;
 
 	ChunkIndexEntry chunk_index_entry{};
 	chunk_index_entry.chunk_start_ts = base_ts;
 	chunk_index_entry.byte_offset = chunk_byte_offset;
-	chunk_index_entry.compressed_size = chunk_header.uncompressed_size;
-	m_file.seekp(sizeof(FileHeader) + (sizeof(ChunkIndexEntry) * m_chunk_count), std::ios::beg); m_file.write(reinterpret_cast<const char*>(&chunk_index_entry), sizeof(chunk_index_entry));
+	chunk_index_entry.compressed_size = static_cast<uint32_t>(compressed_size);
+	m_file.seekp(sizeof(FileHeader) + (sizeof(ChunkIndexEntry) * m_chunk_count), std::ios::beg); 
+	m_file.write(reinterpret_cast<const char*>(&chunk_index_entry), sizeof(chunk_index_entry));
 
 	m_file.seekp(offsetof(FileHeader, chunk_count), std::ios::beg);
 	m_chunk_count++;
