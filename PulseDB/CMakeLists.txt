@@ -7,7 +7,7 @@
 "storage/PulseFileReader.h" 
 "storage/Types.h" 
 "storage/StorageEngine.cpp" 
-"storage/StorageEngine.h")
+"storage/StorageEngine.h" "storage/WalManager.cpp"  "storage/WalManager.h")
 set_property(TARGET PulseDB PROPERTY CXX_STANDARD 20)
 target_include_directories(PulseDB PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(PulseDB PRIVATE
@@ -15,6 +15,7 @@ target_link_libraries(PulseDB PRIVATE
     LZ4::lz4_static
     nlohmann_json::nlohmann_json
     SQLite::SQLite3
+    xxHash::xxhash
 )
 
 enable_testing()
@@ -29,7 +30,7 @@ add_executable(pulsedb_tests
     "storage/PulseFileReader.cpp" 
     "storage/Types.h" 
     "storage/StorageEngine.cpp" 
-    "storage/StorageEngine.h" )
+    "storage/StorageEngine.h"  "storage/WalManager.cpp"  "storage/WalManager.h")
 set_property(TARGET pulsedb_tests PROPERTY CXX_STANDARD 20)
 target_include_directories(pulsedb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(pulsedb_tests PRIVATE
@@ -39,6 +40,7 @@ target_link_libraries(pulsedb_tests PRIVATE
     LZ4::lz4_static
     nlohmann_json::nlohmann_json
     SQLite::SQLite3
+    xxHash::xxhash
 )
 
 include(GoogleTest)

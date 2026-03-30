@@ -19,5 +19,6 @@ find_package(lz4 REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(SQLite3 REQUIRED)
 find_package(GTest REQUIRED)
+find_package(xxHash REQUIRED)
 
 add_subdirectory ("PulseDB")
