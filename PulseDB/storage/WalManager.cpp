@@ -54,7 +54,7 @@ namespace pulsedb{
 		WalEntryHeader entry{};
 		entry.seq_no = seq_;
 		memcpy(entry.target_file_path, target_file.string().c_str(), target_file.string().size());
-		entry.chunk_data_size = sizeof(chunk_data);
+		entry.chunk_data_size = static_cast<uint32_t>(chunk_data.size());
 		
 		out_.write(reinterpret_cast<char*>(&entry), sizeof(entry));
 		out_.write(reinterpret_cast<const char*>(chunk_data.data()), entry.chunk_data_size);

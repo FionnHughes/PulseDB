@@ -11,11 +11,10 @@ namespace pulsedb {
 	static_assert(sizeof(ChunkIndexEntry) == 16, "ChunkIndexEntry size mismatch");
 	static_assert(sizeof(ChunkHeader) == 16, "ChunkHeader size mismatch");
 
-	PulseFileWriter::PulseFileWriter(const std::string& filepath, MetricType type, const std::string& metric_name, const std::filesystem::path& wal_path) {
+	PulseFileWriter::PulseFileWriter(const std::string& filepath, MetricType type, const std::string& metric_name, const std::filesystem::path& wal_path) : m_wal(wal_path){
 		m_filepath = filepath;
 		m_metric_type = type;
 		m_metric_name = metric_name;
-		m_wal = wal_path;
 	}
 	PulseFileWriter::~PulseFileWriter() {
 		flush();
