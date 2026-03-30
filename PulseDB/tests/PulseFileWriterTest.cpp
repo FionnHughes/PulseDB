@@ -3,104 +3,108 @@
 #include "lz4.h"
 #include "storage/PulseFileWriter.h"
 
-class PulseFileWriterTest : public ::testing::Test {
-protected:
-    void SetUp() override {
-        // runs before every test
-        pulsedb::PulseFileWriter writer(test_filepath, MetricType::cpu_total, "cpu_total");
-        writer.open();
+namespace pulsedb {
 
-        for (int i = 0; i < 60; i++) {
-            pulsedb::MetricReading reading;
-            reading.timestamp_ms = base_ts + (i * 1000);
-            reading.value = 10.0 + i;
-            writer.append(reading);
+    class PulseFileWriterTest : public ::testing::Test {
+    protected:
+        void SetUp() override {
+            // runs before every test
+            pulsedb::PulseFileWriter writer(test_filepath, MetricType::cpu_total, "cpu_total");
+            writer.open();
+
+            for (int i = 0; i < 60; i++) {
+                pulsedb::MetricReading reading;
+                reading.timestamp_ms = base_ts + (i * 1000);
+                reading.value = 10.0 + i;
+                writer.append(reading);
+            }
+
+            writer.flush();
+            writer.close();
         }
 
-        writer.flush();
-        writer.close();
+        void TearDown() override {
+            // runs after every test
+            std::remove(test_filepath.c_str());
+        }
+
+        // shared members all tests can access
+        std::string test_filepath = "test_output.pulse";
+        int64_t base_ts = 1700000000000;
+    };
+
+    TEST_F(PulseFileWriterTest, HeaderIsCorrect) {
+        std::ifstream file(test_filepath, std::ios::binary);
+        ASSERT_TRUE(file.is_open());
+
+        FileHeader header{};
+        file.read(reinterpret_cast<char*>(&header), sizeof(header));
+        ASSERT_TRUE(file.good());
+
+        EXPECT_EQ(std::string(header.magic, 4), "PULS");
+        EXPECT_EQ(header.version, 1);
+        EXPECT_EQ(header.metric_type_id, static_cast<uint8_t>(MetricType::cpu_total));
+        EXPECT_EQ(header.reserved, 0x00);
+        EXPECT_EQ(header.chunk_count, 1);
+        EXPECT_EQ(header.chunk_index_offset, 64);
+        EXPECT_EQ(header.readings_per_chunk, 60);
+        EXPECT_EQ(header.collection_interval_ms, 1000);
+        EXPECT_EQ(std::string(header.metric_name, 9), "cpu_total");
     }
 
-    void TearDown() override {
-        // runs after every test
-        std::remove(test_filepath.c_str());
+    TEST_F(PulseFileWriterTest, IndexEntryIsCorrect) {
+        std::ifstream file(test_filepath, std::ios::binary);
+        file.seekg(64, std::ios::beg);
+
+        ChunkIndexEntry chunk_index_entry{};
+        file.read(reinterpret_cast<char*>(&chunk_index_entry), sizeof(chunk_index_entry));
+
+        EXPECT_EQ(chunk_index_entry.chunk_start_ts, 1700000000000);
+        EXPECT_EQ(chunk_index_entry.byte_offset, 23104);
+        EXPECT_LT(chunk_index_entry.compressed_size, 616u);
+        EXPECT_GT(chunk_index_entry.compressed_size, 0u);
     }
 
-    // shared members all tests can access
-    std::string test_filepath = "test_output.pulse";
-    int64_t base_ts = 1700000000000;
-};
+    TEST_F(PulseFileWriterTest, ChunkDataIsCorrect) {
+        std::ifstream file(test_filepath, std::ios::binary);
 
-TEST_F(PulseFileWriterTest, HeaderIsCorrect) {
-    std::ifstream file(test_filepath, std::ios::binary);
-    ASSERT_TRUE(file.is_open());
+        // read compressed size from index entry
+        file.seekg(64, std::ios::beg);
+        ChunkIndexEntry entry{};
+        file.read(reinterpret_cast<char*>(&entry), sizeof(entry));
 
-    FileHeader header{};
-    file.read(reinterpret_cast<char*>(&header), sizeof(header));
-    ASSERT_TRUE(file.good());
+        // read compressed bytes
+        file.seekg(entry.byte_offset, std::ios::beg);
+        std::vector<char> compressed(entry.compressed_size);
+        file.read(compressed.data(), entry.compressed_size);
 
-    EXPECT_EQ(std::string(header.magic, 4), "PULS");
-    EXPECT_EQ(header.version, 1);
-    EXPECT_EQ(header.metric_type_id, static_cast<uint8_t>(MetricType::cpu_total));
-    EXPECT_EQ(header.reserved, 0x00);
-    EXPECT_EQ(header.chunk_count, 1);
-    EXPECT_EQ(header.chunk_index_offset, 64);
-    EXPECT_EQ(header.readings_per_chunk, 60);
-    EXPECT_EQ(header.collection_interval_ms, 1000);
-    EXPECT_EQ(std::string(header.metric_name, 9), "cpu_total");
-}
+        // decompress
+        uint32_t max_uncompressed = sizeof(ChunkHeader) + (60 * 10);
+        std::vector<char> uncompressed(max_uncompressed);
+        int result = LZ4_decompress_safe(compressed.data(), uncompressed.data(), entry.compressed_size, max_uncompressed);
+        ASSERT_GT(result, 0);
 
-TEST_F(PulseFileWriterTest, IndexEntryIsCorrect) {
-    std::ifstream file(test_filepath, std::ios::binary);
-    file.seekg(64, std::ios::beg);
+        const char* ptr = uncompressed.data();
 
-    ChunkIndexEntry chunk_index_entry{};
-    file.read(reinterpret_cast<char*>(&chunk_index_entry), sizeof(chunk_index_entry));
+        ChunkHeader chunk_header{};
+        memcpy(&chunk_header, ptr, sizeof(ChunkHeader));
+        ptr += sizeof(ChunkHeader);
 
-    EXPECT_EQ(chunk_index_entry.chunk_start_ts, 1700000000000);
-    EXPECT_EQ(chunk_index_entry.byte_offset, 23104);
-    EXPECT_LT(chunk_index_entry.compressed_size, 616u);
-    EXPECT_GT(chunk_index_entry.compressed_size, 0u);
-}
+        EXPECT_EQ(chunk_header.base_timestamp_ms, base_ts);
+        EXPECT_EQ(chunk_header.reading_count, 60);
+        EXPECT_EQ(chunk_header.reserved, 0x0000);
+        EXPECT_EQ(chunk_header.uncompressed_size, 616u);
 
-TEST_F(PulseFileWriterTest, ChunkDataIsCorrect) {
-    std::ifstream file(test_filepath, std::ios::binary);
+        uint16_t first_delta;
+        memcpy(&first_delta, ptr, sizeof(first_delta));
+        ptr += sizeof(first_delta);
+        EXPECT_EQ(first_delta, 0);
 
-    // read compressed size from index entry
-    file.seekg(64, std::ios::beg);
-    ChunkIndexEntry entry{};
-    file.read(reinterpret_cast<char*>(&entry), sizeof(entry));
+        double first_value;
+        memcpy(&first_value, ptr, sizeof(first_value));
+        EXPECT_DOUBLE_EQ(first_value, 10.0);
+    }
 
-    // read compressed bytes
-    file.seekg(entry.byte_offset, std::ios::beg);
-    std::vector<char> compressed(entry.compressed_size);
-    file.read(compressed.data(), entry.compressed_size);
-
-    // decompress
-    uint32_t max_uncompressed = sizeof(ChunkHeader) + (60 * 10);
-    std::vector<char> uncompressed(max_uncompressed);
-    int result = LZ4_decompress_safe(compressed.data(), uncompressed.data(), entry.compressed_size, max_uncompressed);
-    ASSERT_GT(result, 0);
-
-    const char* ptr = uncompressed.data();
-
-    ChunkHeader chunk_header{};
-    memcpy(&chunk_header, ptr, sizeof(ChunkHeader));
-    ptr += sizeof(ChunkHeader);
-
-    EXPECT_EQ(chunk_header.base_timestamp_ms, base_ts);
-    EXPECT_EQ(chunk_header.reading_count, 60);
-    EXPECT_EQ(chunk_header.reserved, 0x0000);
-    EXPECT_EQ(chunk_header.uncompressed_size, 616u);
-
-    uint16_t first_delta;
-    memcpy(&first_delta, ptr, sizeof(first_delta));
-    ptr += sizeof(first_delta);
-    EXPECT_EQ(first_delta, 0);
-
-    double first_value;
-    memcpy(&first_value, ptr, sizeof(first_value));
-    EXPECT_DOUBLE_EQ(first_value, 10.0);
 }
 // cd C:\Users\fionn\git\.full_projects\VScpp\PulseDB\build\PulseDB\Release
 // .\pulsedb_tests.exe
