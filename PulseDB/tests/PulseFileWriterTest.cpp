@@ -8,12 +8,12 @@ namespace pulsedb {
     class PulseFileWriterTest : public ::testing::Test {
     protected:
         void SetUp() override {
-            // runs before every test
-            pulsedb::PulseFileWriter writer(test_filepath, MetricType::cpu_total, "cpu_total");
+            std::filesystem::create_directories("test_data");
+            PulseFileWriter writer(test_filepath, MetricType::cpu_total, "cpu_total", "test_data/test.wal");
             writer.open();
 
             for (int i = 0; i < 60; i++) {
-                pulsedb::MetricReading reading;
+                MetricReading reading;
                 reading.timestamp_ms = base_ts + (i * 1000);
                 reading.value = 10.0 + i;
                 writer.append(reading);

@@ -14,11 +14,11 @@ namespace pulsedb {
             std::filesystem::create_directories(test_dir + "/cpu_total");
 
 
-            pulsedb::PulseFileWriter writer(test_filepath, MetricType::cpu_total, "cpu_total");
+           PulseFileWriter writer(test_filepath, MetricType::cpu_total, "cpu_total", "test_data/test.wal");
             writer.open();
 
             for (int i = 0; i < 60; i++) {
-                pulsedb::MetricReading reading;
+               MetricReading reading;
                 reading.timestamp_ms = base_ts + (i * 1000);
                 reading.value = 10.0 + i;
                 writer.append(reading);
@@ -27,11 +27,11 @@ namespace pulsedb {
             writer.close();
 
             std::string test_filepath2 = "test_data/cpu_total/2023-11-15.pulse";
-            pulsedb::PulseFileWriter writer2(test_filepath2, MetricType::cpu_total, "cpu_total");
+           PulseFileWriter writer2(test_filepath2, MetricType::cpu_total, "cpu_total", "test_data/test.wal");
             writer2.open();
 
             for (int i = 0; i < 60; i++) {
-                pulsedb::MetricReading reading;
+               MetricReading reading;
                 reading.timestamp_ms = (base_ts + 86400000) + (i * 1000);
                 reading.value = 20.0 + i;
                 writer2.append(reading);
@@ -48,7 +48,7 @@ namespace pulsedb {
 
         std::string test_filepath = "test_data/cpu_total/2023-11-14.pulse";
         int64_t base_ts = 1700000000000;
-        pulsedb::StorageEngine engine{ test_dir };
+       StorageEngine engine{ test_dir };
     };
 
     TEST_F(StorageEngineTest, SingleFile) {

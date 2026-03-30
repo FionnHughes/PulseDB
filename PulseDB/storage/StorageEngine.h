@@ -7,6 +7,7 @@
 #include <boost/asio.hpp>
 
 #include "storage/Types.h"
+#include "storage/Downsampler.h"
 #include "storage/PulseFileWriter.h"
 #include "storage/PulseFileReader.h"
 
@@ -23,6 +24,7 @@ namespace pulsedb {
 
         bool append(const std::string& metric, MetricType type, const MetricReading& reading);
         void flush_all();
+        std::vector<std::string> get_active_metrics() const;
 
     private:
         std::string m_data_dir;
@@ -30,6 +32,9 @@ namespace pulsedb {
         sqlite3* m_db = nullptr;
         boost::asio::io_context m_ioc;
         std::unique_ptr<boost::asio::steady_timer> m_downsample_timer;
+        std::thread m_ioc_thread;
+
+        std::unique_ptr<Downsampler> m_downsampler;
 
         // helpers
         std::string build_file_path(const std::string& metric, int64_t day_ts);

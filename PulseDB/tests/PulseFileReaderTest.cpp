@@ -8,11 +8,12 @@ namespace pulsedb {
     class PulseFileReaderTest : public ::testing::Test {
     protected:
         void SetUp() override {
-            pulsedb::PulseFileWriter writer(test_filepath, MetricType::cpu_total, "cpu_total");
+            std::filesystem::create_directories("test_data");
+            PulseFileWriter writer(test_filepath, MetricType::cpu_total, "cpu_total", "test_data/test.wal");
             writer.open();
 
             for (int i = 0; i < 60; i++) {
-                pulsedb::MetricReading reading;
+                MetricReading reading;
                 reading.timestamp_ms = base_ts + (i * 1000);
                 reading.value = 10.0 + i;
                 writer.append(reading);
@@ -31,7 +32,7 @@ namespace pulsedb {
 
         std::string test_filepath = "test_output.pulse";
         int64_t base_ts = 1700000000000;
-        pulsedb::PulseFileReader reader{ test_filepath };
+        PulseFileReader reader{ test_filepath };
     };
 
     TEST_F(PulseFileReaderTest, FullQuery) {
