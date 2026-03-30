@@ -5,11 +5,12 @@
 #include <cstdint>
 
 #include "Types.h"
+#include "WalManager.h"
 
 namespace pulsedb {
     class PulseFileWriter {
     public:
-        explicit PulseFileWriter(const std::string& filepath, MetricType type, const std::string& metric_name);
+        explicit PulseFileWriter(const std::string& filepath, MetricType type, const std::string& metric_name, const std::filesystem::path& wal_path);
         ~PulseFileWriter();
 
         bool open();
@@ -30,6 +31,7 @@ namespace pulsedb {
         MetricType m_metric_type;
         std::string m_metric_name;
         uint32_t m_chunk_count = 0;
+        WalManager m_wal;
 
         static constexpr size_t CHUNK_SIZE = 60;
         static constexpr uint32_t CHUNK_INDEX_OFFSET = 64;
