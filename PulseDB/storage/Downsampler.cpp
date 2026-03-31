@@ -94,8 +94,15 @@ namespace pulsedb {
 
 		
 
-		std::vector<std::string> metrics = m_engine.get_active_metrics();
-		for (auto& metric : metrics) {
+		const char* metrics_sql = "SELECT DISTINCT metric FROM metric_summaries_1min WHERE bucket_ts >= ? AND bucket_ts < ?";
+		sqlite3_stmt* metrics_stmt = nullptr;
+		sqlite3_prepare_v2(m_db, metrics_sql, -1, &metrics_stmt, nullptr);
+		sqlite3_bind_int64(metrics_stmt, 1, from_ts);
+		sqlite3_bind_int64(metrics_stmt, 2, to_ts);
+
+		while (sqlite3_step(metrics_stmt) == SQLITE_ROW) {
+			std::string metric = reinterpret_cast<const char*>(sqlite3_column_text(metrics_stmt, 0));
+
 			Stats stat{};
 			stat.min = std::numeric_limits<double>::max();
 			int row_count = 0;
@@ -130,5 +137,6 @@ namespace pulsedb {
 
 			write_1hr(metric, bucket_ts, stat);
 		}
+		sqlite3_finalize(metrics_stmt);
 	}
 }
