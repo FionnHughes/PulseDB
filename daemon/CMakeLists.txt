@@ -1,0 +1,32 @@
+﻿enable_testing()
+add_executable(pulsedb_tests
+    "tests/storage/PulseFileWriterTest.cpp"
+    "tests/storage/PulseFileReaderTest.cpp"
+    "tests/storage/StorageEngineTest.cpp"
+    "tests/storage/WalManagerTest.cpp"
+    "tests/storage/DownsamplerTest.cpp"
+    "src/storage/PulseFileWriter.h"
+    "src/storage/PulseFileWriter.cpp"
+    "src/storage/PulseFileReader.h"
+    "src/storage/PulseFileReader.cpp"
+    "src/storage/Types.h"
+    "src/storage/StorageEngine.h"
+    "src/storage/StorageEngine.cpp"
+    "src/storage/WalManager.h"
+    "src/storage/WalManager.cpp"
+    "src/storage/Downsampler.h"
+    "src/storage/Downsampler.cpp"
+)
+set_property(TARGET pulsedb_tests PROPERTY CXX_STANDARD 20)
+target_include_directories(pulsedb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(pulsedb_tests PRIVATE
+    GTest::gtest
+    GTest::gtest_main
+    boost::boost
+    LZ4::lz4_static
+    nlohmann_json::nlohmann_json
+    SQLite::SQLite3
+    xxHash::xxhash
+)
+include(GoogleTest)
+gtest_discover_tests(pulsedb_tests)
