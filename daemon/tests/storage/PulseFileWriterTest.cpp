@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <fstream>
-#include "lz4.h"
+#include <lz4.h>
 #include "storage/PulseFileWriter.h"
 
 namespace pulsedb {

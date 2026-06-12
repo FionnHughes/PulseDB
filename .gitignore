@@ -15,6 +15,7 @@ CMakeSettings.json
 CMakeUserPresets.json
 conanbuild.bat
 conanrun.bat
+conan/
 
 # Compiled output
 *.exe

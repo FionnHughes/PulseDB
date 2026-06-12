@@ -6,6 +6,9 @@ sqlite3/3.44.2
 gtest/1.14.0
 xxhash/0.8.2
 
+[options]
+boost/*:without_test=True
+
 [generators]
 CMakeDeps
 CMakeToolchain
