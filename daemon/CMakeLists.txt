@@ -30,6 +30,8 @@ add_executable(pulsedb_tests
     "src/collector/RamCollector.cpp"
     "src/collector/CpuCollector.h"
     "src/collector/CpuCollector.cpp"
+    "src/collector/PdhWrapper.h"
+    "src/collector/PdhWrapper.cpp"
 )
 set_property(TARGET pulsedb_tests PROPERTY CXX_STANDARD 20)
 target_include_directories(pulsedb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -41,6 +43,7 @@ target_link_libraries(pulsedb_tests PRIVATE
     nlohmann_json::nlohmann_json
     SQLite::SQLite3
     xxHash::xxhash
+    pdh
 )
 include(GoogleTest)
 gtest_discover_tests(pulsedb_tests)
