@@ -25,6 +25,9 @@ add_executable(pulsedb_tests
     "src/collector/IMetricCollector.h"
     "src/collector/MetricSnapshot.h"
     "src/collector/NtdllHelper.h"
+    "tests/collector/RamCollectorTest.cpp"
+    "src/collector/RamCollector.h"
+    "src/collector/RamCollector.cpp"
     "src/collector/CpuCollector.h"
     "src/collector/CpuCollector.cpp"
 )
