@@ -22,15 +22,15 @@ namespace pulsedb {
 	}
 
 	TEST(CpuCollectorTest, FillSnapshotProducesValidRanges) {
-		CpuCollector collector;
+		CpuCollector cpu_collector;
 		MetricSnapshot snap;
 
-		collector.initialize();
+		cpu_collector.initialize();
 
 		std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-		collector.collect();
-		collector.fill_snapshot(snap);
+		cpu_collector.collect();
+		cpu_collector.fill_snapshot(snap);
 
 		EXPECT_GE(snap.cpu_total_percent, 0.0f);
 		EXPECT_LE(snap.cpu_total_percent, 100.0f);
