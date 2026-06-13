@@ -6,6 +6,8 @@ add_executable(pulsedb_tests
     "tests/storage/WalManagerTest.cpp"
     "tests/storage/DownsamplerTest.cpp"
     "tests/storage/RetentionManagerTest.cpp"
+    "tests/collector/CpuCollectorTest.cpp"
+
     "src/storage/PulseFileWriter.h"
     "src/storage/PulseFileWriter.cpp"
     "src/storage/PulseFileReader.h"
@@ -19,6 +21,12 @@ add_executable(pulsedb_tests
     "src/storage/Downsampler.cpp"
     "src/storage/RetentionManager.h"
     "src/storage/RetentionManager.cpp"
+
+    "src/collector/IMetricCollector.h"
+    "src/collector/MetricSnapshot.h"
+    "src/collector/NtdllHelper.h"
+    "src/collector/CpuCollector.h"
+    "src/collector/CpuCollector.cpp"
 )
 set_property(TARGET pulsedb_tests PROPERTY CXX_STANDARD 20)
 target_include_directories(pulsedb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
