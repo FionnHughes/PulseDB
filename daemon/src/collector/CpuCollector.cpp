@@ -11,6 +11,21 @@ namespace {
 	uint64_t filetime_to_uint64(const FILETIME& ft) {
 		return (static_cast<uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
 	}
+
+	bool get_processor_info(std::vector<SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION>& buffer, int core_count) {
+
+		auto fn = pulsedb::NtdllHelper::get().query_fn();
+
+		ULONG bytes_returned = 0;
+		NTSTATUS status = fn(
+			SystemProcessorPerformanceInformation,
+			buffer.data(),
+			static_cast<ULONG>(sizeof(SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION) * core_count),
+			&bytes_returned
+		);
+
+		return status >= 0;
+	}
 }
 namespace pulsedb {
 	std::string CpuCollector::name() const {
@@ -45,17 +60,7 @@ namespace pulsedb {
 
 		std::vector<SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION> buffer(m_core_count);
 
-		auto fn = NtdllHelper::get().query_fn();
-		
-		ULONG bytes_returned = 0;
-		NTSTATUS status = fn(
-			SystemProcessorPerformanceInformation, 
-			buffer.data(), 
-			static_cast<ULONG>(sizeof(SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION) * m_core_count), 
-			&bytes_returned
-		);
-
-		if (status < 0) {
+		if (!get_processor_info(buffer, m_core_count)) {
 			m_degraded = true;
 			return false;
 		}
@@ -110,17 +115,9 @@ namespace pulsedb {
 
 		std::vector<SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION> buffer(m_core_count);
 
-		auto fn = NtdllHelper::get().query_fn();
+		
 
-		ULONG bytes_returned = 0;
-		NTSTATUS status = fn(
-			SystemProcessorPerformanceInformation,
-			buffer.data(),
-			static_cast<ULONG>(sizeof(SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION) * m_core_count),
-			&bytes_returned
-		);
-
-		if (status < 0) {
+		if (!get_processor_info(buffer, m_core_count)) {
 			m_degraded = true;
 			return false;
 		}
