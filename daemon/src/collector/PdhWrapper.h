@@ -10,6 +10,7 @@ namespace pulsedb {
 
 	class PdhWrapper {
 	public:
+		PdhWrapper() = default;
 		~PdhWrapper();
 
 		bool open();
