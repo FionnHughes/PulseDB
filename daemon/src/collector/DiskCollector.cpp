@@ -1,6 +1,7 @@
 #include <string>
 
 #include "DiskCollector.h"
+#include "common/Utils.h"
 
 namespace {
 	//storing strange path names in variables to help readability 
@@ -8,20 +9,6 @@ namespace {
 	constexpr const wchar_t* read_write_path = L"\\PhysicalDisk(*)\\Disk Write Bytes/sec";
 	constexpr const wchar_t* time_path = L"\\PhysicalDisk(*)\\% Disk Time";
 	constexpr const wchar_t* queue_path = L"\\PhysicalDisk(*)\\Current Disk Queue Length";
-	
-	//need to convert wstring to utf8 to store names in my metric statistics struct
-	std::string to_utf8(const std::wstring& w_string) {
-		//getting size which the wide string will return
-		int size = WideCharToMultiByte(CP_UTF8, 0, w_string.c_str(), static_cast<int>(w_string.size()), NULL, 0, NULL, NULL);
-		if (!size) {
-			return std::string();
-		}
-		std::string utf8(size, '\0');
-
-		WideCharToMultiByte(CP_UTF8, 0, w_string.c_str(), static_cast<int>(w_string.size()), utf8.data(), size, NULL, NULL);
-
-		return utf8;
-	}
 }
 
 namespace pulsedb {
@@ -91,7 +78,7 @@ namespace pulsedb {
 				continue;
 			}
 			MetricSnapshot::DiskStats entry;
-			entry.device_name = to_utf8(reads[i].first);
+			entry.device_name = to_utf8(reads[i].first.c_str(), static_cast<int>(reads[i].first.size()));
 			entry.read_bytes_per_sec = static_cast<uint64_t>(reads[i].second);
 			entry.write_bytes_per_sec = static_cast<uint64_t>(writes[i].second);
 			entry.utilization_percent = static_cast<float>(utilization[i].second);

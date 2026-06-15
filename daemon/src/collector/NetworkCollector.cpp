@@ -6,22 +6,7 @@
 #include <iphlpapi.h>
 
 #include "NetworkCollector.h"
-
-namespace {
-	//need to convert wstring to utf8 to store names in my metric statistics struct
-	std::string to_utf8(const std::wstring& w_string) {
-		//getting size which the wide string will return
-		int size = WideCharToMultiByte(CP_UTF8, 0, w_string.c_str(), static_cast<int>(w_string.size()), NULL, 0, NULL, NULL);
-		if (!size) {
-			return std::string();
-		}
-		std::string utf8(size, '\0');
-
-		WideCharToMultiByte(CP_UTF8, 0, w_string.c_str(), static_cast<int>(w_string.size()), utf8.data(), size, NULL, NULL);
-
-		return utf8;
-	}
-}
+#include "common/Utils.h"
 
 namespace pulsedb {
 	//name just in case i forget this obscure function
@@ -127,7 +112,7 @@ namespace pulsedb {
 			uint64_t packets_out_per_sec = static_cast<uint64_t>(out_packets_delta / elapsed_secs);
 
 			MetricSnapshot::NetworkStats entry{
-				to_utf8(std::wstring(row.Alias)),
+				to_utf8(row.Alias, static_cast<int>(wcsnlen(row.Alias, IF_MAX_STRING_SIZE))),
 				bytes_in_per_sec,
 				bytes_out_per_sec,
 				packets_in_per_sec,

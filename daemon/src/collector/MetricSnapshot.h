@@ -20,6 +20,10 @@ namespace pulsedb {
 		uint64_t swap_total_bytes{ 0 };
 		uint64_t swap_used_bytes{ 0 };
 
+		uint32_t pulsedb_pid{ 0 };
+		float    pulsedb_cpu_percent{ 0.0f };
+		uint64_t pulsedb_ram_bytes{ 0 };
+
 		struct DiskStats {
 			std::string device_name;
 			uint64_t read_bytes_per_sec{ 0 };
@@ -41,6 +45,8 @@ namespace pulsedb {
 			std::string name;
 			float cpu_percent{ 0.0f };
 			uint64_t ram_bytes{ 0 };
+			uint32_t thread_count{ 0 };
+			uint32_t handle_count{ 0 };
 			uint64_t disk_read_bytes_per_sec{ 0 };
 			uint64_t disk_write_bytes_per_sec{ 0 };
 		};
