@@ -7,6 +7,7 @@ add_executable(pulsedb_tests
     "tests/storage/DownsamplerTest.cpp"
     "tests/storage/RetentionManagerTest.cpp"
     "tests/collector/CpuCollectorTest.cpp"
+    "tests/collector/DiskCollectorTest.cpp"
 
     "src/storage/PulseFileWriter.h"
     "src/storage/PulseFileWriter.cpp"
@@ -32,7 +33,8 @@ add_executable(pulsedb_tests
     "src/collector/CpuCollector.cpp"
     "src/collector/PdhWrapper.h"
     "src/collector/PdhWrapper.cpp"
-)
+    "src/collector/DiskCollector.h"
+    "src/collector/DiskCollector.cpp")
 set_property(TARGET pulsedb_tests PROPERTY CXX_STANDARD 20)
 target_include_directories(pulsedb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(pulsedb_tests PRIVATE
