@@ -51,9 +51,25 @@ namespace pulsedb {
 			uint64_t disk_write_bytes_per_sec{ 0 };
 		};
 
+		struct SystemMetrics {
+			uint64_t context_switches_per_sec{ 0 };
+			uint64_t system_calls_per_sec{ 0 };
+			uint64_t page_faults_per_sec{ 0 };
+		};
+
+		struct PowerState {
+			bool on_ac_power{ false };
+			bool battery_present{ false };
+			uint8_t battery_percent{ 0 };
+			int32_t battery_seconds_remaining{ -1 };
+			int32_t battery_full_seconds_remaining{ -1 };
+		};
+
 		std::vector<DiskStats> disks;
 		std::vector<NetworkStats> network_adapters;
 		std::vector<ProcessInfo> top_processes;
+		SystemMetrics system_metrics;
+		PowerState power;
 
 		void reserve(int core_count, int disk_count, int adapter_count, int process_count) {
 			cpu_per_core_percent.reserve(core_count);
