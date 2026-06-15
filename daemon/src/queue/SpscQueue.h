@@ -9,6 +9,7 @@ class SpscQueue {
 public:
 	bool try_push(const T& item) { return try_push_impl(item); }
 	bool try_push(T&& item) { return try_push_impl(std::move(item)); }
+
 	std::optional<T> try_pop() {
 		size_t current_read = m_read_idx.load(std::memory_order_relaxed);
 		size_t current_write = m_write_idx.load(std::memory_order_acquire);
@@ -21,12 +22,14 @@ public:
 
 		return item;
 	}
+
 	size_t size() const {
 		size_t current_read = m_read_idx.load(std::memory_order_relaxed);
 		size_t current_write = m_write_idx.load(std::memory_order_relaxed);
 
 		return (current_write - current_read + Capacity) % Capacity;
 	}
+
 	bool empty() const {
 		return m_read_idx.load(std::memory_order_relaxed) == m_write_idx.load(std::memory_order_relaxed);
 	}
