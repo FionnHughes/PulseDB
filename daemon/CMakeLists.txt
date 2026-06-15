@@ -46,9 +46,14 @@ add_executable(pulsedb_tests
     "src/collector/SystemMetricsCollector.cpp"
     "src/collector/PowerCollector.h"
     "src/collector/PowerCollector.cpp"
+    "src/collector/CollectorScheduler.h"
+    "src/collector/CollectorScheduler.cpp"
+
+    "src/queue/SpscQueue.h"
+    "src/queue/RingBuffer.h"
 
     "src/common/Utils.h"
-    "src/common/Utils.cpp")
+    "src/common/Utils.cpp" )
 target_compile_definitions(pulsedb_tests PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00)
 set_property(TARGET pulsedb_tests PROPERTY CXX_STANDARD 20)
 target_include_directories(pulsedb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
