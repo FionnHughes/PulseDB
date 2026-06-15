@@ -8,6 +8,7 @@ add_executable(pulsedb_tests
     "tests/storage/RetentionManagerTest.cpp"
     "tests/collector/CpuCollectorTest.cpp"
     "tests/collector/DiskCollectorTest.cpp"
+    "tests/collector/NetworkCollectorTest.cpp"
 
     "src/storage/PulseFileWriter.h"
     "src/storage/PulseFileWriter.cpp"
@@ -34,7 +35,10 @@ add_executable(pulsedb_tests
     "src/collector/PdhWrapper.h"
     "src/collector/PdhWrapper.cpp"
     "src/collector/DiskCollector.h"
-    "src/collector/DiskCollector.cpp")
+    "src/collector/DiskCollector.cpp"
+    "src/collector/NetworkCollector.h"
+    "src/collector/NetworkCollector.cpp" "tests/collector/NetworkCollectorTest.cpp")
+target_compile_definitions(pulsedb_tests PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00)
 set_property(TARGET pulsedb_tests PROPERTY CXX_STANDARD 20)
 target_include_directories(pulsedb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(pulsedb_tests PRIVATE
@@ -46,6 +50,7 @@ target_link_libraries(pulsedb_tests PRIVATE
     SQLite::SQLite3
     xxHash::xxhash
     pdh
+    iphlpapi 
 )
 include(GoogleTest)
 gtest_discover_tests(pulsedb_tests)
