@@ -5,6 +5,7 @@
 #include "Types.h"
 
 namespace pulsedb {
+    // reads metric readings back from a .pulse file for querying, read-only, no writes
     class PulseFileReader {
     public:
         explicit PulseFileReader(const std::string& filepath);

@@ -8,10 +8,12 @@
 #include "NtdllHelper.h"
 
 namespace {
+	// FILETIME is a 64 bit value annoyingly split into two 32 bit halves so this stitches them together
 	uint64_t filetime_to_uint64(const FILETIME& ft) {
 		return (static_cast<uint64_t>(ft.dwHighDateTime) << 32) | ft.dwLowDateTime;
 	}
 
+	// calls NtQuerySystemInformation with SystemProcessorPerformanceInformation to get per core timing data
 	bool get_processor_info(std::vector<SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION>& buffer, int core_count) {
 
 		auto fn = pulsedb::NtdllHelper::get().query_fn();
@@ -32,6 +34,7 @@ namespace pulsedb {
 		return "cpu";
 	}
 
+	// gets the core count, sizes all the vectors, seeds the previous tick values for the first collect
 	bool CpuCollector::initialize() {
 		SYSTEM_INFO info{};
 		GetSystemInfo(&info);
@@ -51,29 +54,31 @@ namespace pulsedb {
 
 		m_prev_cycle_ticks.resize(m_core_count);
 
+		m_perf_buffer.resize(m_core_count);
+
+		// dont continue if we can't query the kernel
 		if (!NtdllHelper::get().is_loaded()) {
 			m_degraded = true;
 			return false;
 		}
-
+		// setting previous tick values so the first collect() has something to delta against
 		GetSystemTimes(&m_prev_idle, &m_prev_kernel, &m_prev_user);
 
-		std::vector<SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION> buffer(m_core_count);
-
-		if (!get_processor_info(buffer, m_core_count)) {
+		if (!get_processor_info(m_perf_buffer, m_core_count)) {
 			m_degraded = true;
 			return false;
 		}
 
 		for (int i = 0; i < m_core_count; ++i) {
-			m_prev_idle_ticks[i] = static_cast<uint64_t>(buffer[i].IdleTime.QuadPart);
-			m_prev_kernel_ticks[i] = static_cast<uint64_t>(buffer[i].KernelTime.QuadPart);
-			m_prev_user_ticks[i] = static_cast<uint64_t>(buffer[i].UserTime.QuadPart);
+			m_prev_idle_ticks[i] = static_cast<uint64_t>(m_perf_buffer[i].IdleTime.QuadPart);
+			m_prev_kernel_ticks[i] = static_cast<uint64_t>(m_perf_buffer[i].KernelTime.QuadPart);
+			m_prev_user_ticks[i] = static_cast<uint64_t>(m_perf_buffer[i].UserTime.QuadPart);
 		}
 
 		return true;
 	}
 
+	// samples system times, computes deltas from last tick, calculates usage percentages for total and per core
 	bool CpuCollector::collect() {
 		if (m_degraded) {
 			return false;
@@ -99,9 +104,13 @@ namespace pulsedb {
 		uint64_t kernel_delta = kernel_now - kernel_prev;
 		uint64_t user_delta = user_now - user_prev;
 
+		// windows includes idle time inside kernel time so total is just kernel + user
 		uint64_t total = kernel_delta + user_delta;
+
+		// busy = total - idle, clamped to 0 if counters are a little inconsistent
 		uint64_t busy = (idle_delta < total) ? (total - idle_delta) : 0;
 
+		// avoid dividing by zero if the interval was too short or this is the very first tick
 		if (total == 0) {
 			m_cpu_total_percent = 0.0f;
 		}
@@ -113,19 +122,16 @@ namespace pulsedb {
 		m_prev_kernel = kernel_current_local;
 		m_prev_user = user_current_local;
 
-		std::vector<SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION> buffer(m_core_count);
-
-		
-
-		if (!get_processor_info(buffer, m_core_count)) {
+		if (!get_processor_info(m_perf_buffer, m_core_count)) {
 			m_degraded = true;
 			return false;
 		}
 
-		for (int i = 0; i < m_core_count; ++i) {
-			uint64_t core_idle_now = static_cast<uint64_t>(buffer[i].IdleTime.QuadPart);
-			uint64_t core_kernel_now = static_cast<uint64_t>(buffer[i].KernelTime.QuadPart);
-			uint64_t core_user_now = static_cast<uint64_t>(buffer[i].UserTime.QuadPart);
+		// same calculation as total CPU but per core using the NtQuerySystemInformation buffer
+		for (int i = 0; i < m_core_count; i++) {
+			uint64_t core_idle_now = static_cast<uint64_t>(m_perf_buffer[i].IdleTime.QuadPart);
+			uint64_t core_kernel_now = static_cast<uint64_t>(m_perf_buffer[i].KernelTime.QuadPart);
+			uint64_t core_user_now = static_cast<uint64_t>(m_perf_buffer[i].UserTime.QuadPart);
 
 			uint64_t core_idle_delta = core_idle_now - m_prev_idle_ticks[i];
 			uint64_t core_kernel_delta = core_kernel_now - m_prev_kernel_ticks[i];
@@ -148,6 +154,7 @@ namespace pulsedb {
 		return true;
 	}
 
+	// copies the cached per core and total percentages into the shared snapshot
 	void CpuCollector::fill_snapshot(MetricSnapshot& snap) const {
 		snap.cpu_total_percent = m_cpu_total_percent;
 		snap.cpu_per_core_percent = m_per_core_percent;

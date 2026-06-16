@@ -1,3 +1,4 @@
+#include <cmath>
 #include <limits>
 
 #include "Downsampler.h"
@@ -7,6 +8,7 @@
 namespace pulsedb {
 	Downsampler::Downsampler(StorageEngine& engine, sqlite3* db) : m_engine(engine), m_db(db) { }
 
+	// calculates min, max, mean, and p95 over a list of readings
 	Downsampler::Stats Downsampler::compute_stats(const std::vector<MetricReading>& readings) {
 		Downsampler::Stats stats{};
 		if (readings.empty()) return stats;
@@ -18,13 +20,16 @@ namespace pulsedb {
 			stats.mean += r.value;
 		}
 		
+		// need sorted values for the percentile calculation
 		std::sort(values.begin(), values.end());
 
 		stats.min = values.front();
 		stats.max = values.back();
 		stats.mean /= readings.size();
-
-		stats.p95 = values[static_cast<size_t>(0.95 * values.size())];
+		
+		// nearest-rank p95 formula [ ceil(0.95 * n) - 1 ] gives the correct index
+		size_t p95_idx = static_cast<size_t>(std::ceil(0.95 * static_cast<double>(values.size()))) - 1;
+		stats.p95 = values[p95_idx];
 
 		return stats;
 	}
@@ -69,6 +74,7 @@ namespace pulsedb {
 		return rc == SQLITE_DONE;
 	}
 
+	// queries the last 60 seconds of raw readings for each active metric, computes stats, writes to metric_summaries_1min
 	void Downsampler::run_1min(int64_t now_ms) {
 		int64_t from_ms = now_ms - 60000;
 		int64_t to_ms = now_ms;
@@ -87,12 +93,11 @@ namespace pulsedb {
 
 	}
 
+	// queries the last hour of 1 min rows from sqlite and combines them into an hourly row per metric
 	void Downsampler::run_1hr(int64_t now_ms) {
 		int64_t from_ts = now_ms - 3600000;
 		int64_t to_ts = now_ms;
 		int64_t bucket_ts = (now_ms / 3600000) * 3600000;
-
-		
 
 		const char* metrics_sql = "SELECT DISTINCT metric FROM metric_summaries_1min WHERE bucket_ts >= ? AND bucket_ts < ?";
 		sqlite3_stmt* metrics_stmt = nullptr;
@@ -104,14 +109,16 @@ namespace pulsedb {
 			std::string metric = reinterpret_cast<const char*>(sqlite3_column_text(metrics_stmt, 0));
 
 			Stats stat{};
+			// init min to the largest possible value so any real reading will replace it
 			stat.min = std::numeric_limits<double>::max();
+			// init max to the smallest possible value so any real reading will replace it
+			stat.max = std::numeric_limits<double>::lowest();
 			int row_count = 0;
 
 			const char* sql = "SELECT min_val, max_val, mean_val, p95_val FROM metric_summaries_1min WHERE metric = ? AND bucket_ts >= ? AND bucket_ts < ?";
 
 			sqlite3_stmt* stmt = nullptr;
-			if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK)
-				continue;
+			if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) continue;
 
 			sqlite3_bind_text(stmt, 1, metric.c_str(), -1, SQLITE_STATIC);
 			sqlite3_bind_int64(stmt, 2, from_ts);

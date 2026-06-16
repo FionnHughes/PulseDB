@@ -6,6 +6,7 @@ namespace pulsedb {
 		close();
 	}
 
+	// opens a PDH query which must be called before adding counters
 	bool PdhWrapper::open() {
 		if (PdhOpenQueryW(nullptr, 0, &m_query) != ERROR_SUCCESS) {
 			m_query = nullptr;
@@ -23,6 +24,7 @@ namespace pulsedb {
 		m_counters.clear();
 	}
 
+	// registers a counter path and returns its index into those counters, use this index with get_double / get_all_doubles
 	int PdhWrapper::add_counter(const std::wstring& counter_path) {
 		if (!is_open()) {
 			return -1;
@@ -37,6 +39,7 @@ namespace pulsedb {
 		return static_cast<int>(m_counters.size() - 1);
 	}
 
+	// snapshots all registered counters which must be called before reading values
 	bool PdhWrapper::collect() {
 		if (!is_open()) {
 			return false;
@@ -44,6 +47,7 @@ namespace pulsedb {
 		return PdhCollectQueryData(m_query) == ERROR_SUCCESS;
 	}
 
+	// reads a single formatted value from a counter (for counters without multiple instances)
 	bool PdhWrapper::get_double(int counter_idx, double& out) const {
 		if (counter_idx < 0 || counter_idx >= static_cast<int>(m_counters.size())) {
 			return false;
@@ -59,11 +63,13 @@ namespace pulsedb {
 		return true;
 	}
 
+	// reads all inctance formatted value from a counter (for counters with multiple instances)
 	bool PdhWrapper::get_all_doubles(int counter_idx, std::vector<std::pair<std::wstring, double>>& out) const {
 		if (counter_idx < 0 || counter_idx >= static_cast<int>(m_counters.size())) {
 			return false;
 		}
 
+		// first call with null buffer returns PDH_MORE_DATA and fills in the required buffer size
 		DWORD buffer_size = 0, item_count = 0;
 
 		if (PdhGetFormattedCounterArrayW(m_counters[counter_idx], PDH_FMT_DOUBLE, &buffer_size, &item_count, nullptr) != PDH_MORE_DATA) {

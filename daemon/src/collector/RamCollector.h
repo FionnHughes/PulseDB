@@ -5,7 +5,7 @@
 #include "IMetricCollector.h"
 
 namespace pulsedb {
-
+	// reads physical memory and page file usage from Windows
 	class RamCollector : public IMetricCollector {
 	public:
 		std::string name() const override;

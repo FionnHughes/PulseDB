@@ -11,6 +11,7 @@ namespace pulsedb {
 	protected:
 		void SetUp() override {
 			std::filesystem::create_directories(test_dir);
+			// in-memory db so nothing to clean up
 			sqlite3_open(":memory:", &m_db);
 
 			const char* sql = R"(
@@ -54,6 +55,7 @@ namespace pulsedb {
 
 	};
 
+	// creates a very old .pulse file then runs retention and file should be deleted
 	TEST_F(RetentionManagerTest, DeletesPulseFilesOlderThanCutoff) {
 		std::ofstream(test_dir + "/2020-01-01.pulse").close();
 		ASSERT_TRUE(std::filesystem::exists(test_dir + "/2020-01-01.pulse"));
@@ -66,7 +68,7 @@ namespace pulsedb {
 		EXPECT_FALSE(std::filesystem::exists(test_dir + "/2020-01-01.pulse"));
 	}
 
-
+	// inserts a very old summary row then runs retention and row should be gone
 	TEST_F(RetentionManagerTest, Deletes1MinRowsOlderThanCutoff) {
 		const char* insert_sql = "INSERT INTO metric_summaries_1min (metric, bucket_ts, min_val, max_val, mean_val, p95_val) VALUES ('cpu_total', 1000000, 1.0, 2.0, 1.5, 1.9)";
 		sqlite3_exec(m_db, insert_sql, nullptr, nullptr, nullptr);
@@ -85,6 +87,7 @@ namespace pulsedb {
 		EXPECT_EQ(count, 0);
 	}
 
+	// same thing for the 1 hr table
 	TEST_F(RetentionManagerTest, Deletes1HrRowsOlderThanCutoff) {
 		const char* insert_sql = "INSERT INTO metric_summaries_1hr (metric, bucket_ts, min_val, max_val, mean_val, p95_val) VALUES ('cpu_total', 1000000, 1.0, 2.0, 1.5, 1.9)";
 		sqlite3_exec(m_db, insert_sql, nullptr, nullptr, nullptr);

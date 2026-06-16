@@ -9,7 +9,7 @@
 #include "common/Utils.h"
 
 namespace pulsedb {
-	//name just in case i forget this obscure function
+	// returns name just in case i forget this obscure function
 	std::string NetworkCollector::name() const {
 		return "network";
 	}
@@ -17,14 +17,12 @@ namespace pulsedb {
 	bool NetworkCollector::initialize() {
 		LARGE_INTEGER freq;
 
-		//querying and storing freq
 		if (!QueryPerformanceFrequency(&freq)) {
 			m_degraded = true;
 			return false;
 		}
 		m_freq = freq.QuadPart;
 
-		//creating tables
 		MIB_IF_TABLE2* table = nullptr;
 
 		if (GetIfTable2(&table) != NO_ERROR) {
@@ -57,6 +55,7 @@ namespace pulsedb {
 		return true;
 	}
 
+	// gets the current adapter table, computes deltas against the previous tick values, divides by elapsed time for per-second rates
 	bool NetworkCollector::collect() {
 		if (m_degraded) {
 			return false;
@@ -66,6 +65,7 @@ namespace pulsedb {
 		double elapsed_secs = static_cast<double>(now.QuadPart - m_prev_ticks) / m_freq;
 
 		if (elapsed_secs <= 0) {
+			m_prev_ticks = now.QuadPart;
 			return false;
 		}
 
@@ -93,6 +93,7 @@ namespace pulsedb {
 				};
 				continue;
 			}
+			// guard against counter resets (like an adapter off and on), treat as 0 delta rather than a huge spike
 			uint64_t in_bytes_delta = (row.InOctets > it->second.in_octets)
 				? (row.InOctets - it->second.in_octets)
 				: 0;
@@ -106,6 +107,7 @@ namespace pulsedb {
 				? ((row.OutUcastPkts + row.OutNUcastPkts) - it->second.out_packets)
 				: 0;
 
+			// dividing by actual elapsed time so im not assuming exactly 1s
 			uint64_t bytes_in_per_sec = static_cast<uint64_t>(in_bytes_delta / elapsed_secs);
 			uint64_t bytes_out_per_sec = static_cast<uint64_t>(out_bytes_delta / elapsed_secs);
 			uint64_t packets_in_per_sec = static_cast<uint64_t>(in_packets_delta / elapsed_secs);

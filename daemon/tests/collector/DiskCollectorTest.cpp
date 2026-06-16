@@ -7,18 +7,19 @@
 
 namespace pulsedb {
       
-    //ensuring a successful initialization
+    // ensuring a successful initialization
     TEST(DiskCollectorTest, InitializeSucceeds) {
         DiskCollector disk_collector;
         EXPECT_TRUE(disk_collector.initialize());
     }
 
+    // checks we got at least one disk and all fields look valid
     TEST(DiskCollectorTest, CollectAndFillSnapshots) {
         DiskCollector disk_collector;
         MetricSnapshot snap;
 
-        //giving time to initialize
         disk_collector.initialize();
+        // PDH counters need at least two collections to return values so wait first
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
         disk_collector.collect();

@@ -6,7 +6,7 @@
 #include "collector/MetricSnapshot.h"
 
 namespace pulsedb {
-
+	// smoke test as initialize should succeed on any windows machine
 	TEST(CpuCollectorTest, InitializeSucceeds) {
 		CpuCollector collector;
 		EXPECT_TRUE(collector.initialize());
@@ -16,11 +16,13 @@ namespace pulsedb {
 		CpuCollector collector;
 		collector.initialize();
 
+		// need some elapsed time between calls so the counter deltas are useful
 		std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
 		EXPECT_TRUE(collector.collect());
 	}
 
+	// all percentages should be in in range of 0 - 100 and the per core vector correct size	
 	TEST(CpuCollectorTest, FillSnapshotProducesValidRanges) {
 		CpuCollector cpu_collector;
 		MetricSnapshot snap;

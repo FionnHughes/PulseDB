@@ -7,6 +7,7 @@ namespace pulsedb {
 
     class PulseFileWriterTest : public ::testing::Test {
     protected:
+        // creates a .pulse file with 60 readings before each test
         void SetUp() override {
             std::filesystem::create_directories("test_data");
             PulseFileWriter writer(test_filepath, MetricType::cpu_total, "cpu_total", "test_data/test.wal");
@@ -23,6 +24,7 @@ namespace pulsedb {
             writer.close();
         }
 
+        // deletes the test file after each test
         void TearDown() override {
             // runs after every test
             std::remove(test_filepath.c_str());
@@ -33,6 +35,7 @@ namespace pulsedb {
         int64_t base_ts = 1700000000000;
     };
 
+    // reads the raw bytes from the file and checks each header field is correct
     TEST_F(PulseFileWriterTest, HeaderIsCorrect) {
         std::ifstream file(test_filepath, std::ios::binary);
         ASSERT_TRUE(file.is_open());
@@ -52,6 +55,7 @@ namespace pulsedb {
         EXPECT_EQ(std::string(header.metric_name, 9), "cpu_total");
     }
 
+    // reads the first index entry and checks the timestamp and byte offset
     TEST_F(PulseFileWriterTest, IndexEntryIsCorrect) {
         std::ifstream file(test_filepath, std::ios::binary);
         file.seekg(64, std::ios::beg);
@@ -65,6 +69,7 @@ namespace pulsedb {
         EXPECT_GT(chunk_index_entry.compressed_size, 0u);
     }
 
+    // decompresses the first chunk and checks the reading values are still correct
     TEST_F(PulseFileWriterTest, ChunkDataIsCorrect) {
         std::ifstream file(test_filepath, std::ios::binary);
 
@@ -106,5 +111,3 @@ namespace pulsedb {
     }
 
 }
-// cd C:\Users\fionn\git\.full_projects\VScpp\PulseDB\build\PulseDB\Release
-// .\pulsedb_tests.exe

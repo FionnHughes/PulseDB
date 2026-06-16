@@ -4,12 +4,14 @@
 
 namespace pulsedb {
 
+    // how long to keep each data tier, raw .pulse files, 1-min summaries, 1-hr summaries
     struct RetentionConfig {
         int raw_days = 7;
         int min_days = 30;
         int hr_days = 365;
     };
 
+    // deletes old data on a daily schedule the raw files after 7 days, 1-min rows after 30 days, 1-hr rows after a year
     class RetentionManager {
     public:
         RetentionManager(const std::string& data_dir, sqlite3* db, RetentionConfig config);

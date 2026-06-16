@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <vector>
 #include <memory>
 #include <chrono>
@@ -12,6 +13,7 @@
 
 namespace pulsedb {
 
+    // owns all the collectors and runs them every second using a boost asio timer
     class  CollectorScheduler {
     public:
         CollectorScheduler(
@@ -20,16 +22,28 @@ namespace pulsedb {
         );
         void start();
         void stop();
+        void run();
+        void run_async();
 
     private:
+        // all active collectors and are run every tick
         std::vector<std::unique_ptr<IMetricCollector>> m_collectors;
+
+        // asio event loop that drives the timer
         boost::asio::io_context m_io;
         boost::asio::steady_timer m_timer;
+        std::thread m_io_thread;
+
+        // reused every tick - vecctors get cleared at the start of each tick to avoid stale data
         MetricSnapshot m_snapshot;
         SpscQueue<MetricSnapshot, 1024>& m_queue;
         RingBuffer<MetricSnapshot, 300>& m_ring;
+
+        // target tick interval, 1000ms
         std::chrono::milliseconds m_interval;
-        bool m_running;
+
+        // checked at the start of each tick
+        std::atomic<bool> m_running;
 
         void tick();
     };

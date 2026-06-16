@@ -4,10 +4,19 @@
 #include <string>
 #include <vector>
 
+// IMPORTANT - many of the stats here are collected but not implemented into pulse files and proper collection yet
+// TODO
+// - Power state 
+// - System metrics
+// - Top processes
+// - Swap usage, disk utilization%, disk queue depth, packet rates
+// - PulseDB's own self monitoring
 
 namespace pulsedb {
 
+	// everything we measure in one tick, one of these is pushed into the queue every second
 	struct MetricSnapshot {
+		// when this snapshot was taken, unix milliseconds
 		int64_t timestamp_ms{ 0 };
 
 		float cpu_total_percent{ 0.0f };
@@ -24,6 +33,7 @@ namespace pulsedb {
 		float    pulsedb_cpu_percent{ 0.0f };
 		uint64_t pulsedb_ram_bytes{ 0 };
 
+		// per physical-disk metrics
 		struct DiskStats {
 			std::string device_name;
 			uint64_t read_bytes_per_sec{ 0 };
@@ -31,7 +41,8 @@ namespace pulsedb {
 			float utilization_percent{ 0.0f };
 			uint64_t queue_depth{ 0 };
 		};
-
+		
+		// per adapter metrics
 		struct NetworkStats {
 			std::string adapter_name;
 			uint64_t bytes_in_per_sec{ 0 };
@@ -40,6 +51,7 @@ namespace pulsedb {
 			uint64_t packets_out_per_sec{ 0 };
 		};
 
+		// per process stats but only the top 25 by CPU usage end up in the snapshot
 		struct ProcessInfo {
 			uint32_t pid{ 0 };
 			std::string name;
@@ -51,12 +63,14 @@ namespace pulsedb {
 			uint64_t disk_write_bytes_per_sec{ 0 };
 		};
 
+		// kernel level counters
 		struct SystemMetrics {
 			uint64_t context_switches_per_sec{ 0 };
 			uint64_t system_calls_per_sec{ 0 };
 			uint64_t page_faults_per_sec{ 0 };
 		};
 
+		// battery and AC power status
 		struct PowerState {
 			bool on_ac_power{ false };
 			bool battery_present{ false };

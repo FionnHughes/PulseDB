@@ -4,11 +4,13 @@
 
 namespace pulsedb {
 
+    // GlobalMemoryStatusEx should always work on windows so this shouldnt fail
     TEST(RamCollectorTest, InitializeSucceeds) {
         RamCollector ram_collector;
         EXPECT_TRUE(ram_collector.initialize());
     }
 
+    // checks that used + available == total
     TEST(RamCollectorTest, CollectAndFillSnapshots) { 
         RamCollector ram_collector;
         MetricSnapshot snap;

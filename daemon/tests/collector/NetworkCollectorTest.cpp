@@ -12,11 +12,13 @@ namespace pulsedb {
         EXPECT_TRUE(network_collector.initialize());
     }
 
+    // checks we got at least one adapter and the name is not empty
     TEST(NetworkCollectorTest, CollectAndFillSnapshots) {
         NetworkCollector network_collector;
         MetricSnapshot snap;
 
         network_collector.initialize();
+        // give the adapter counters some time so the delta between ticks is useful
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
         network_collector.collect();

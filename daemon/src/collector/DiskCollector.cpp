@@ -17,8 +17,7 @@ namespace pulsedb {
 		return "disk";
 	}
 
-
-	//intilializing collector
+	// opens a PDH query and registers the four per disk counters we want
 	bool DiskCollector::initialize() {
 		//opens a new pdh 
 		if (!m_pdh.open()) {
@@ -48,12 +47,11 @@ namespace pulsedb {
 			return false;
 		}
 
-		//initial collection
 		m_pdh.collect();
 		return true;
 	}
 
-	//proper collection to reference against
+	// collects the PDH query and splits the results into per disk stats
 	bool DiskCollector::collect() {
 		if (m_degraded) {
 			return false;
@@ -62,7 +60,7 @@ namespace pulsedb {
 		if (!m_pdh.collect()) {
 			return false;
 		}
-		//defining a vector of pairs to get return values from counter array
+		// defining a vector of pairs to get return values from counter array
 		std::vector<std::pair<std::wstring, double>> reads, writes, utilization, queue;
 
 		if (!m_pdh.get_all_doubles(m_read_bytes_idx, reads)) { return false; }
@@ -72,8 +70,9 @@ namespace pulsedb {
 
 		m_disks.clear();
 
-		//assuming here that the returns line up with one another index wise
+		// assuming here that the returns line up with one another index wise
 		for (size_t i = 0; i < reads.size(); i++) {
+			// PDH returns an aggregate "_Total" entry for each counter but we skip it, we want per disk
 			if (reads[i].first == L"_Total") {
 				continue;
 			}
@@ -89,12 +88,10 @@ namespace pulsedb {
 		return true;
 	}
 
-	//filling snapshot excatly from earlier snapshot
 	void DiskCollector::fill_snapshot(MetricSnapshot& snap) const {
 		snap.disks = m_disks;
 	}
 
-	//making sure everything closes
 	void DiskCollector::shutdown() {
 		m_pdh.close();
 	}

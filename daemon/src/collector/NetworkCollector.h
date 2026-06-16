@@ -8,6 +8,8 @@
 #include "MetricSnapshot.h"
 
 namespace pulsedb {
+
+	// uses windows MIB_IF_TABLE2 from iphlpapi to get per adapter stats
 	class NetworkCollector : public IMetricCollector {
 	public:
 		std::string name() const override;
@@ -17,7 +19,7 @@ namespace pulsedb {
 		void shutdown() override;
 
 	private:
-		//unique counters for wifi testing
+		// stores data from the previous tick to compute deltas against
 		struct PrevCounters {
 			uint64_t in_octets{};
 			uint64_t out_octets{};
@@ -25,9 +27,9 @@ namespace pulsedb {
 			uint64_t out_packets{};
 		};
 
+		// keyed by InterfaceLuid which in a unique identifier
 		std::unordered_map<uint64_t, PrevCounters> m_prev;
 
-		//query performance counter and freq
 		int64_t m_prev_ticks{ 0 };
 		int64_t m_freq{ 0 };
 

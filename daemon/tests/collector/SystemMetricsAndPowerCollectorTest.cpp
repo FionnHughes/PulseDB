@@ -11,6 +11,7 @@ namespace pulsedb {
 		EXPECT_TRUE(collector.initialize());
 	}
 
+	// like the cpu collector, the second collect is more useful because we have a previous value to delta against
 	TEST(SystemMetricsCollector, CollectReturnsTrue) {
 		SystemMetricsCollector collector;
 		collector.initialize();
@@ -38,6 +39,7 @@ namespace pulsedb {
 		EXPECT_TRUE(collector.collect());
 	}
 
+	// 0 - 100 are normal values, 255 means Windows doesn't know (desktop with no battery)
 	TEST(PowerCollector, BatteryPercentInValidRange) {
 		PowerCollector collector;
 		collector.initialize();

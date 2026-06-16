@@ -11,6 +11,7 @@ namespace pulsedb {
 		void SetUp() override {
 			std::filesystem::create_directories(test_dir);
 			m_engine = std::make_unique<StorageEngine>(test_dir);
+			// in-memory sqlite database for tests so no files to clean up
 			sqlite3_open(":memory:", &m_db);
 
 			const char* sql = R"(
@@ -59,6 +60,7 @@ namespace pulsedb {
 
 	};
 
+	// checks min, max, mean, p95 with 10 values
 	TEST_F(DownsamplerTest, ComputeStatsCorrect) {
 		std::vector<MetricReading> readings;
 		for (int i = 1; i <= 10; i++) {
@@ -72,7 +74,7 @@ namespace pulsedb {
 		EXPECT_DOUBLE_EQ(stat.p95, 10.0);
 	}
 
-
+	// inserts some 1 min rows then runs run_1hr() and checks the aggregated result
 	TEST_F(DownsamplerTest, Run1HrAggregatesFrom1MinRows) {
 		int64_t now_ms = 1700000000000;
 
@@ -102,6 +104,7 @@ namespace pulsedb {
 		sqlite3_finalize(stmt);
 	}
 
+	// empty input should return all zero
 	TEST_F(DownsamplerTest, EmptyInputSkipsWrite) {
 		std::vector<MetricReading> readings;
 
@@ -111,5 +114,21 @@ namespace pulsedb {
 		EXPECT_DOUBLE_EQ(stat.max, 0);
 		EXPECT_DOUBLE_EQ(stat.mean, 0);
 		EXPECT_DOUBLE_EQ(stat.p95, 0);
+	}
+
+	// 100 values: old formula returned 96, correct nearest-rank returns 95
+	TEST_F(DownsamplerTest, ComputeStatsP95NearestRank) {
+		// Old formula: values[size_t(0.95 * 100)] = values[95] = 96  (wrong)
+		// Correct nearest-rank: values[ceil(0.95*100)-1] = values[94] = 95
+		std::vector<MetricReading> readings;
+		for (int i = 1; i <= 100; i++) {
+			readings.push_back({ 0, static_cast<double>(i) });
+		}
+		Downsampler::Stats stat = m_downsampler->compute_stats(readings);
+
+		EXPECT_DOUBLE_EQ(stat.min, 1.0);
+		EXPECT_DOUBLE_EQ(stat.max, 100.0);
+		EXPECT_DOUBLE_EQ(stat.mean, 50.5);
+		EXPECT_DOUBLE_EQ(stat.p95, 95.0);
 	}
 }

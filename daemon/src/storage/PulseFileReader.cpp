@@ -11,6 +11,7 @@ namespace pulsedb {
 		m_filepath = filepath;
 	}
 
+	// opens the file, validates the magic and version, then loads the chunk index into memory
 	bool PulseFileReader::open() {
 		m_file.open(m_filepath, std::ios::binary | std::ios::in);
 
@@ -21,9 +22,11 @@ namespace pulsedb {
 		m_file.read(reinterpret_cast<char*>(&m_header), sizeof(m_header));
 		if (!m_file.good()) return false;
 
+		// reject files that aren't .pulse format or are corrupt
 		if (memcmp(m_header.magic, PULSE_MAGIC, 4) != 0) return false;
 		if (m_header.version != PULSE_VERSION) return false;
 
+		// jump to where the index lives right after the 64-byte header
 		m_file.seekg(m_header.chunk_index_offset, std::ios::beg);
 		m_index.resize(m_header.chunk_count);
 
@@ -37,6 +40,7 @@ namespace pulsedb {
 		m_file.close();
 	}
 
+	// walks the index, skips chunks outside the time range, decompresses the rest and filters individual readings
 	std::vector<MetricReading> PulseFileReader::query(int64_t from_ms, int64_t to_ms) {
 		std::vector<MetricReading> results;
 		results.reserve(m_header.chunk_count * m_header.readings_per_chunk);
@@ -44,8 +48,10 @@ namespace pulsedb {
 		for (uint32_t i = 0; i < m_header.chunk_count; i++) {
 			const auto& entry = m_index[i];
 
+			// empty index slots have offset 0 - means that minute had no data
 			if (entry.byte_offset == 0) continue;
 
+			// approximate end of this chunk's time range so we can decide if it overlaps the query
 			int64_t chunk_end = entry.chunk_start_ts + (static_cast<int64_t>(m_header.readings_per_chunk) * m_header.collection_interval_ms);
 			if (chunk_end >= from_ms && entry.chunk_start_ts <= to_ms) {
 				std::vector<char> compressed_buf(entry.compressed_size);
@@ -58,6 +64,7 @@ namespace pulsedb {
 
 				std::vector<char> uncompressed_buf(max_uncompressed_size);
 
+				// safe variant of LZ4 decompress so we don't overflow the output buffer
 				int decompressed_size = LZ4_decompress_safe(
 					compressed_buf.data(),
 					uncompressed_buf.data(),
@@ -79,6 +86,7 @@ namespace pulsedb {
 					ptr += sizeof(delta);
 
 					MetricReading r;
+					// reconstruct the full timestamp from the base timestamp + the stored delta
 					r.timestamp_ms = chunk_header.base_timestamp_ms + delta;
 					memcpy(&r.value, ptr, sizeof(r.value));
 					ptr += sizeof(r.value);

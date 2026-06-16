@@ -7,6 +7,7 @@
 namespace pulsedb {
 	RetentionManager::RetentionManager(const std::string& data_dir, sqlite3* db, RetentionConfig config) : m_data_dir(data_dir), m_db(db), m_config(config) {}
 
+	// parses "YYYY-MM-DD" from a .pulse filename stem and returns midnight UTC in unix milliseconds
 	int64_t RetentionManager::date_string_to_ms(const std::string& stem) {
 		int year = 0, month = 0, day = 0;
 		if (std::sscanf(stem.c_str(), "%d-%d-%d", &year, &month, &day) != 3) {
@@ -24,6 +25,7 @@ namespace pulsedb {
 		return static_cast<int64_t>(seconds) * 1000LL;
 	}
 
+	// calculates cutoff timestamps from config then runs the deletion passes
 	void RetentionManager::run(int64_t now_ms) {
 		int64_t raw_cutoff = now_ms - (m_config.raw_days * 86400000LL);
 		int64_t min_cutoff = now_ms - (m_config.min_days * 86400000LL);
@@ -34,6 +36,7 @@ namespace pulsedb {
 		delete_1hr_rows(hr_cutoff);
 	}
 
+	// walks the data directory looking for.pulse files older than the cutoff and removes them
 	bool RetentionManager::delete_pulse_files(int64_t cutoff_ms) {
 		bool success = true;
 		for (const std::filesystem::directory_entry& file : std::filesystem::recursive_directory_iterator(m_data_dir)) {
@@ -52,6 +55,7 @@ namespace pulsedb {
 		return success;
 	}
 
+	// deletes rows from metric_summaries_1min older than the cutoff
 	bool RetentionManager::delete_1min_rows(int64_t cutoff_ms) {
 		const char* metrics_sql = "DELETE FROM metric_summaries_1min WHERE bucket_ts < ?";
 		sqlite3_stmt* stmt = nullptr;
@@ -65,6 +69,7 @@ namespace pulsedb {
 		return rc == SQLITE_DONE;
 	}
 
+	// deletes rows from metric_summaries_1hr older than the cutoff
 	bool RetentionManager::delete_1hr_rows(int64_t cutoff_ms) {
 		const char* metrics_sql = "DELETE FROM metric_summaries_1hr WHERE bucket_ts < ?";
 		sqlite3_stmt* stmt = nullptr;
