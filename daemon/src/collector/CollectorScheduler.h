@@ -8,6 +8,7 @@
 
 #include "IMetricCollector.h"
 #include "MetricSnapshot.h"
+#include "ProcessCollector.h"
 #include "../queue/SpscQueue.h"
 #include "../queue/RingBuffer.h"
 
@@ -25,6 +26,8 @@ namespace pulsedb {
         void run();
         void run_async();
 
+        ProcessCollector* get_process_collector() const { return m_process_collector; }
+
     private:
         // all active collectors and are run every tick
         std::vector<std::unique_ptr<IMetricCollector>> m_collectors;
@@ -38,6 +41,8 @@ namespace pulsedb {
         MetricSnapshot m_snapshot;
         SpscQueue<MetricSnapshot, 1024>& m_queue;
         RingBuffer<MetricSnapshot, 300>& m_ring;
+
+        ProcessCollector* m_process_collector = nullptr;
 
         // target tick interval, 1000ms
         std::chrono::milliseconds m_interval;

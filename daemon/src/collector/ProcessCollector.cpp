@@ -67,6 +67,7 @@ namespace pulsedb {
 	bool ProcessCollector::collect() {
 		m_temp_candidates.clear();
 		m_temp_cycle_delta.clear();
+		m_all_processes.clear();
 
 		m_tick_gen++;
 		auto fn = pulsedb::NtdllHelper::get().query_fn();
@@ -114,6 +115,17 @@ namespace pulsedb {
 				continue;
 			}	
 
+			auto it = m_pid_map.find(pid);
+			if (it != m_pid_map.end() && it->second.create_time == entry->CreateTime.QuadPart) {
+				m_temp_cycle_delta.push_back(entry->CycleTime - it->second.prev_cycles);
+				it->second.prev_cycles = entry->CycleTime;
+				it->second.last_seen = m_tick_gen;
+			}
+			else {
+				m_temp_cycle_delta.push_back(0);
+				m_pid_map.insert_or_assign(pid, PidEntry{ entry->CycleTime, entry->CreateTime.QuadPart, m_tick_gen });
+			}
+
 			ProcessCandidate cand{
 				static_cast<uint32_t>(pid),
 				entry->ImageName.Buffer,
@@ -157,13 +169,17 @@ namespace pulsedb {
 		);
 		m_top_processes.clear();
 		size_t top_n = std::min((size_t)25, m_temp_candidates.size());
-		for (size_t i = 0; i < top_n; i++) {
+		for (size_t i = 0; i < m_temp_candidates.size(); i++) {
 			auto& c = m_temp_candidates[i];
 			std::string name = c.name_buffer ? to_utf8(c.name_buffer, c.name_length / 2) : "System";
-			m_top_processes.push_back(MetricSnapshot::ProcessInfo{
-				c.pid, std::move(name), c.cpu_percent, c.ram_bytes,
+			MetricSnapshot::ProcessInfo info{
+				c.pid, name, c.cpu_percent, c.ram_bytes,
 				c.thread_count, c.handle_count, 0, 0
-				});
+			};
+			if (i < top_n) {
+				m_top_processes.push_back(info);
+			}
+			m_all_processes.push_back(std::move(info));
 		}
 		m_prev_total_cycles = total_cycles;
 		// after the first tick the deltas are valid
@@ -180,6 +196,7 @@ namespace pulsedb {
 	void ProcessCollector::shutdown() {
 		m_pid_map.clear();
 		m_top_processes.clear();
+		m_all_processes.clear();
 		m_temp_cycle_delta.clear();
 		m_prev_total_cycles = 0;
 	}

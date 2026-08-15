@@ -9,6 +9,7 @@
 #include "../storage/StorageEngine.h"
 #include "../queue/RingBuffer.h"
 #include "../collector/MetricSnapshot.h"
+#include "../collector/ProcessCollector.h"
 
 namespace pulsedb {
 
@@ -19,6 +20,7 @@ namespace pulsedb {
         ApiServer(StorageEngine& storage, RingBuffer<MetricSnapshot, 300>& ring, uint16_t port);
 
         void set_shutdown_callback(std::function<void()> cb);
+        void set_process_collector(ProcessCollector* pc);
 
         void start();
         void stop();
@@ -26,6 +28,9 @@ namespace pulsedb {
     private:
         StorageEngine& m_storage;
         RingBuffer<MetricSnapshot, 300>& m_ring;
+
+        ProcessCollector* m_process_collector = nullptr;
+
         uint16_t m_port;
         std::thread m_thread;
         std::chrono::steady_clock::time_point m_start_time;

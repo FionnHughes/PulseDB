@@ -25,6 +25,7 @@ namespace pulsedb {
         m_collectors.push_back(std::make_unique<DiskCollector>());
         m_collectors.push_back(std::make_unique<NetworkCollector>());
         m_collectors.push_back(std::make_unique<ProcessCollector>());
+        m_process_collector = static_cast<ProcessCollector*>(m_collectors.back().get());
         m_collectors.push_back(std::make_unique<SystemMetricsCollector>());
         m_collectors.push_back(std::make_unique<PowerCollector>());
 

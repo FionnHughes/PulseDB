@@ -36,6 +36,7 @@ int main() {
 
     pulsedb::CollectorScheduler scheduler(queue, ring);
 
+    api.set_process_collector(scheduler.get_process_collector());
     api.set_shutdown_callback([&scheduler]() { scheduler.stop(); });
 
     // initializes all collectors then starts the first tick

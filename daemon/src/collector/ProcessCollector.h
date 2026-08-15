@@ -18,6 +18,8 @@ namespace pulsedb {
 		void fill_snapshot(MetricSnapshot& snap) const override;
 		void shutdown() override;
 
+		const std::vector<MetricSnapshot::ProcessInfo>& get_all_processes() const { return m_all_processes; }
+
 	private:
 		// per process state kept between ticks
 		struct PidEntry {
@@ -52,6 +54,7 @@ namespace pulsedb {
 		uint64_t m_prev_total_cycles{ 0 };
 		DWORD m_own_pid{ 0 };
 		std::vector<MetricSnapshot::ProcessInfo> m_top_processes;
+		std::vector<MetricSnapshot::ProcessInfo> m_all_processes;
 
 		float m_pulsedb_cpu{};
 		uint64_t m_pulsedb_ram{};
