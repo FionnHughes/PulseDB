@@ -31,7 +31,17 @@ namespace pulsedb {
 		std::vector<BYTE> m_buffer;
 		std::unordered_map<uint64_t, PidEntry> m_pid_map;
 
-		std::vector<MetricSnapshot::ProcessInfo> m_temp_processes;
+		struct ProcessCandidate {
+			uint32_t pid;
+			PWSTR name_buffer;
+			USHORT name_length;
+			float cpu_percent;
+			uint64_t ram_bytes;
+			uint32_t thread_count;
+			uint32_t handle_count;
+		};
+
+		std::vector<ProcessCandidate> m_temp_candidates;
 		std::vector<uint64_t> m_temp_cycle_delta;
 
 		// cpu percentages are arent useful on the first tick since theres nothing compute deltas against
