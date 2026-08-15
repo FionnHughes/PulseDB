@@ -17,5 +17,6 @@ find_package(nlohmann_json REQUIRED)
 find_package(SQLite3 REQUIRED)
 find_package(GTest REQUIRED)
 find_package(xxHash REQUIRED)
+find_package(Drogon REQUIRED)
 
 add_subdirectory ("daemon")

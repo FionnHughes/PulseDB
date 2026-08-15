@@ -1,10 +1,11 @@
 [requires]
-boost/1.84.0
+boost/1.83.0
 lz4/1.9.4
 nlohmann_json/3.11.3
 sqlite3/3.44.2
 gtest/1.14.0
 xxhash/0.8.2
+drogon/1.9.13
 
 [options]
 boost/*:without_test=True
