@@ -22,7 +22,7 @@ namespace pulsedb {
         // called once per hour to collect the last 60 one minute rows into an hourly row
         void run_1hr(int64_t now_ms);
 
-        Stats compute_stats(const std::vector<MetricReading>&);
+        static Stats compute_stats(const std::vector<MetricReading>&);
 
 
     private:
