@@ -39,16 +39,16 @@ namespace pulsedb {
         m_running = true;
 
         // gets amount of processors we have from windows to pre allocate the per core vectors
-        SYSTEM_INFO info{};
-        GetSystemInfo(&info);
-        m_snapshot.reserve(static_cast<int>(info.dwNumberOfProcessors), 4, 4, 25);
+        DWORD core_count = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+        if (core_count == 0) core_count = 1;
+        m_snapshot.reserve(static_cast<int>(core_count), 4, 4, 25);
         tick();
     }
 
     // cancels the timer, joins the io thread, then shuts down all collectors
     void CollectorScheduler::stop() {
         m_running = false;
-        m_timer.cancel();
+        boost::asio::post(m_io, [this]() { m_timer.cancel(); });
         if (m_io_thread.joinable()) m_io_thread.join();
         for (auto& c : m_collectors) {
             c->shutdown();
