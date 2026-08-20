@@ -8,8 +8,10 @@
 namespace pulsedb {
 
 	// just stores the data directory path, open() does real setup
-	StorageEngine::StorageEngine(const std::string& data_dir)
-		: m_data_dir(data_dir) {
+	StorageEngine::StorageEngine(const std::string& data_dir, RetentionConfig retention_config) :
+		m_data_dir(data_dir),
+		m_retention_config(retention_config)
+	{
 	}
 
 	// creates the sqlite db if needed, replays any leftover WAL files from crashes, then starts the downsampler timer
@@ -68,7 +70,7 @@ namespace pulsedb {
 		}
 		m_downsampler = std::make_unique<Downsampler>(*this, m_db);
 
-		m_retention = std::make_unique<RetentionManager>(m_data_dir, m_db, RetentionConfig{});
+		m_retention = std::make_unique<RetentionManager>(m_data_dir, m_db, m_retention_config);
 
 		m_downsample_timer = std::make_unique<boost::asio::steady_timer>(m_ioc);
 

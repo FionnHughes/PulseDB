@@ -20,7 +20,7 @@ namespace pulsedb {
     // the main storage layer which owns all the .pulse writers, the downsampler, retention, and the background writer thread
     class StorageEngine {
     public:
-        StorageEngine(const std::string& data_dir);
+        StorageEngine(const std::string& data_dir, RetentionConfig retention_config = RetentionConfig{});
 
         bool open();
         void close();
@@ -37,6 +37,8 @@ namespace pulsedb {
         // protects m_writers as it is accessed from the writer thread and potentially the query path
         mutable std::mutex m_writers_mutex;
         std::string m_data_dir;
+
+        RetentionConfig m_retention_config;
 
         // one writer per metric, created on the first append for that metric on the current day
         std::unordered_map<std::string, std::unique_ptr<PulseFileWriter>> m_writers;

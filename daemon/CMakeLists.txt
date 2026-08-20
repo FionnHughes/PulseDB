@@ -79,7 +79,7 @@ add_executable(pulsedb_daemon
     "src/common/Utils.cpp"
 
     "src/api/ApiServer.cpp"
- "src/api/websocket/LiveFeedHandler.cpp")
+ "src/api/websocket/LiveFeedHandler.cpp" "src/common/Config.cpp")
 
 target_compile_definitions(pulsedb_daemon PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00 NOMINMAX WIN32_LEAN_AND_MEAN)
 set_property(TARGET pulsedb_daemon PROPERTY CXX_STANDARD 20)

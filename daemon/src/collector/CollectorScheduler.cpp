@@ -11,12 +11,12 @@
 
 namespace pulsedb {
     // sets up the asio context and timer, creates all collectors
-    CollectorScheduler::CollectorScheduler(SpscQueue<MetricSnapshot, 1024>& queue, RingBuffer<MetricSnapshot, 300>& ring):
+    CollectorScheduler::CollectorScheduler(SpscQueue<MetricSnapshot, 1024>& queue, RingBuffer<MetricSnapshot, 300>& ring, int interval_ms) :
         m_io(),
         m_timer(m_io),
         m_queue(queue),
         m_ring(ring),
-        m_interval(1000),
+        m_interval(interval_ms),
         m_running(false)
     {
         // adding all collectors (order doesn't matter)

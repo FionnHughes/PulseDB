@@ -17,10 +17,7 @@ namespace pulsedb {
     // owns all the collectors and runs them every second using a boost asio timer
     class  CollectorScheduler {
     public:
-        CollectorScheduler(
-            SpscQueue<MetricSnapshot, 1024>& queue,
-            RingBuffer<MetricSnapshot, 300>& ring
-        );
+        CollectorScheduler(SpscQueue<MetricSnapshot, 1024>& queue, RingBuffer<MetricSnapshot, 300>& ring, int interval_ms);
         void start();
         void stop();
         void run();

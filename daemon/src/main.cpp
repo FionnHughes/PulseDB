@@ -2,7 +2,9 @@
 #include <filesystem>
 #include <windows.h>
 
+#include "common/Config.h"
 #include "storage/StorageEngine.h"
+#include "storage/RetentionManager.h"
 #include "collector/CollectorScheduler.h"
 #include "collector/MetricSnapshot.h"
 #include "queue/SpscQueue.h"
@@ -10,13 +12,17 @@
 #include "api/ApiServer.h"
 
 int main() {
-    // TODO: will in future come from a config file or command line arg
-    const std::string data_dir = "C:/ProgramData/PulseDB/data";
+    pulsedb::Config config = pulsedb::load_config();
 
-    // creates the directory tree if it doesn't already exist
-    std::filesystem::create_directories(data_dir);
+    std::filesystem::create_directories(config.data_directory);
 
-    pulsedb::StorageEngine storage(data_dir);
+    pulsedb::RetentionConfig retention{
+    config.retention_raw_days,
+    config.retention_1min_days,
+    config.retention_1hr_days
+    };
+
+    pulsedb::StorageEngine storage(config.data_directory, retention);
     // if storage fails to open, nothing works so exit immediately
     if (!storage.open()) {
         std::cerr << "Failed to open storage engine\n";
@@ -29,12 +35,12 @@ int main() {
     RingBuffer<pulsedb::MetricSnapshot, 300> ring;
 
     //instantiates api server after ring is established
-    pulsedb::ApiServer api(storage, ring, 7700);
+    pulsedb::ApiServer api(storage, ring, config.api_port);
 
     // starts the writer thread which drains from the queue
     storage.start_writer(queue);
 
-    pulsedb::CollectorScheduler scheduler(queue, ring);
+    pulsedb::CollectorScheduler scheduler(queue, ring, config.collection_interval_ms);
 
     api.set_process_collector(scheduler.get_process_collector());
     api.set_shutdown_callback([&scheduler]() { scheduler.stop(); });
