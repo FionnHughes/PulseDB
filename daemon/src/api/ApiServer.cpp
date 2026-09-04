@@ -36,6 +36,10 @@ namespace pulsedb {
         m_process_collector = pc;
     }
 
+    void ApiServer::set_alert_engine(AlertEngine* engine) {
+        m_alert_engine = engine;
+    }
+
     // drogon blocks on run() so it needs its own thread so crash here doesn't kill the daemon silently
     void ApiServer::start() {
         m_thread = std::thread([this]() {
@@ -62,11 +66,11 @@ namespace pulsedb {
         drogon::app().addListener("127.0.0.1", m_port);
         std::cout << "ApiServer: registering routes\n";
         register_routes();
+        register_alert_routes();   // <-- this line was missing
 
-        // override drogon's default behaviour, shutdown is driven by main.cpp instead with Ctrl + C
         drogon::app().setIntSignalHandler([this]() {
             if (m_shutdown_callback) m_shutdown_callback();
-        });
+            });
         LiveFeedHandler::init(&m_ring);
 
         std::cout << "ApiServer: starting drogon event loop\n";
@@ -245,5 +249,87 @@ namespace pulsedb {
             },
             { drogon::Get }
         );
+    }
+
+    void ApiServer::register_alert_routes() {
+        if (!m_alert_engine) return;  // stage 1/2 only, no crud wired in
+
+        AlertEngine* engine = m_alert_engine;
+
+        drogon::app().registerHandler("/api/alerts/rules",
+            [engine](const drogon::HttpRequestPtr& req,
+                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+                    Json::Value arr(Json::arrayValue);
+                    for (const auto& r : engine->get_rules()) arr.append(rule_to_json(r));
+                    callback(drogon::HttpResponse::newHttpJsonResponse(arr));
+            }, { drogon::Get });
+
+        drogon::app().registerHandler("/api/alerts/rules",
+            [engine](const drogon::HttpRequestPtr& req,
+                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+                    auto json = req->getJsonObject();
+                    if (!json) {
+                        auto resp = drogon::HttpResponse::newHttpResponse();
+                        resp->setStatusCode(drogon::k400BadRequest);
+                        callback(resp);
+                        return;
+                    }
+                    AlertRule rule = json_to_rule(*json);
+                    int64_t id = engine->add_rule(rule);
+                    Json::Value result;
+                    result["id"] = static_cast<Json::Int64>(id);
+                    auto resp = drogon::HttpResponse::newHttpJsonResponse(result);
+                    resp->setStatusCode(id > 0 ? drogon::k201Created : drogon::k500InternalServerError);
+                    callback(resp);
+            }, { drogon::Post });
+
+        drogon::app().registerHandler("/api/alerts/rules/{1}",
+            [engine](const drogon::HttpRequestPtr& req,
+                std::function<void(const drogon::HttpResponsePtr&)>&& callback, int64_t id) {
+                    auto json = req->getJsonObject();
+                    if (!json) {
+                        auto resp = drogon::HttpResponse::newHttpResponse();
+                        resp->setStatusCode(drogon::k400BadRequest);
+                        callback(resp);
+                        return;
+                    }
+                    AlertRule rule = json_to_rule(*json);
+                    bool ok = engine->update_rule(id, rule);
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode(ok ? drogon::k200OK : drogon::k404NotFound);
+                    callback(resp);
+            }, { drogon::Put });
+
+        drogon::app().registerHandler("/api/alerts/rules/{1}",
+            [engine](const drogon::HttpRequestPtr& req,
+                std::function<void(const drogon::HttpResponsePtr&)>&& callback, int64_t id) {
+                    bool ok = engine->delete_rule(id);
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode(ok ? drogon::k200OK : drogon::k404NotFound);
+                    callback(resp);
+            }, { drogon::Delete });
+
+        drogon::app().registerHandler("/api/alerts/history",
+            [engine](const drogon::HttpRequestPtr& req,
+                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+                    int limit = 50, offset = 0;
+                    int64_t rule_id_filter = 0;
+                    if (auto p = req->getParameter("limit"); !p.empty()) limit = std::stoi(p);
+                    if (auto p = req->getParameter("offset"); !p.empty()) offset = std::stoi(p);
+                    if (auto p = req->getParameter("rule_id"); !p.empty()) rule_id_filter = std::stoll(p);
+
+                    Json::Value arr(Json::arrayValue);
+                    for (const auto& h : engine->get_history(limit, offset, rule_id_filter)) {
+                        Json::Value j;
+                        j["id"] = static_cast<Json::Int64>(h.id);
+                        j["rule_id"] = static_cast<Json::Int64>(h.rule_id);
+                        j["triggered_at"] = static_cast<Json::Int64>(h.triggered_at);
+                        j["resolved_at"] = static_cast<Json::Int64>(h.resolved_at);
+                        j["peak_value"] = h.peak_value;
+                        j["duration_seconds"] = static_cast<Json::Int64>(h.duration_seconds);
+                        arr.append(j);
+                    }
+                    callback(drogon::HttpResponse::newHttpJsonResponse(arr));
+            }, { drogon::Get });
     }
 }

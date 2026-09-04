@@ -10,6 +10,7 @@
 #include "../queue/RingBuffer.h"
 #include "../collector/MetricSnapshot.h"
 #include "../collector/ProcessCollector.h"
+#include "../alerts/AlertEngine.h"
 
 namespace pulsedb {
 
@@ -21,6 +22,7 @@ namespace pulsedb {
 
         void set_shutdown_callback(std::function<void()> cb);
         void set_process_collector(ProcessCollector* pc);
+        void set_alert_engine(AlertEngine* engine);
 
         void start();
         void stop();
@@ -30,14 +32,15 @@ namespace pulsedb {
         RingBuffer<MetricSnapshot, 300>& m_ring;
 
         ProcessCollector* m_process_collector = nullptr;
+        AlertEngine* m_alert_engine = nullptr;
 
         uint16_t m_port;
         std::thread m_thread;
         std::chrono::steady_clock::time_point m_start_time;
         std::function<void()> m_shutdown_callback;
 
-        // the function that actually calls drogon::app().run(), executed on m_thread
-        void run();  
+        void run();
         void register_routes();
+        void register_alert_routes();  // split out since it's a chunk of new endpoints
     };
 }
