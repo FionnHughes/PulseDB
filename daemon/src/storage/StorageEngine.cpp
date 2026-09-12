@@ -1,6 +1,7 @@
 #include <filesystem>
 #include <sqlite3.h>
 #include <chrono>
+#include <limits>
 
 #include "StorageEngine.h"
 #include "WalManager.h"
@@ -14,8 +15,37 @@ namespace pulsedb {
 	{
 	}
 
+	// tries to lock a small sentinel file in the data dir. CreateFile with no FILE_SHARE flags will prevent second instance
+	bool StorageEngine::acquire_lock() {
+		std::filesystem::create_directories(m_data_dir);
+		std::string lock_path = (std::filesystem::path(m_data_dir) / ".pulsedb.lock").string();
+
+		m_lock_handle = CreateFileA(
+			lock_path.c_str(),
+			GENERIC_READ | GENERIC_WRITE,
+			0, // no sharing at all
+			nullptr,
+			OPEN_ALWAYS,
+			FILE_ATTRIBUTE_NORMAL,
+			nullptr
+		);
+
+		return m_lock_handle != INVALID_HANDLE_VALUE;
+	}
+
+	void StorageEngine::release_lock() {
+		if (m_lock_handle != INVALID_HANDLE_VALUE) {
+			CloseHandle(m_lock_handle);
+			m_lock_handle = INVALID_HANDLE_VALUE;
+		}
+	}
+
 	// creates the sqlite db if needed, replays any leftover WAL files from crashes, then starts the downsampler timer
 	bool StorageEngine::open() {
+		// checks if a lock is in place (if another instance is open)
+		if (!acquire_lock()) {
+			return false;
+		}
 		std::filesystem::path db_path = m_data_dir;
 
 		// sqlite database holds the 1-minute and 1-hour aggregate summaries
@@ -106,6 +136,7 @@ namespace pulsedb {
 			sqlite3_close(m_db);
 			m_db = nullptr;
 		}
+		release_lock();
 	}
 
 	// called every 60 seconds and does 1-min aggregation every run, 1-hr only on the hour, retention only once per day
@@ -177,6 +208,57 @@ namespace pulsedb {
 			day_ts = day_ts + 86400000;
 		}
 		return results;
+	}
+
+	StorageEngine::SummaryQueryResult StorageEngine::query_summary(const std::string& metric, int64_t from_ms, int64_t to_ms, const std::string& resolution) {
+		SummaryQueryResult result;
+
+		const char* table = resolution == "1min" ? "metric_summaries_1min" : "metric_summaries_1hr";
+		std::string sql = std::string("SELECT bucket_ts, min_val, max_val, mean_val, p95_val FROM ") + table +
+			" WHERE metric = ? AND bucket_ts >= ? AND bucket_ts < ? ORDER BY bucket_ts ASC";
+
+		sqlite3_stmt* stmt = nullptr;
+		if (sqlite3_prepare_v2(m_db, sql.c_str(), -1, &stmt, nullptr) != SQLITE_OK) return result;
+
+		sqlite3_bind_text(stmt, 1, metric.c_str(), -1, SQLITE_STATIC);
+		sqlite3_bind_int64(stmt, 2, from_ms);
+		sqlite3_bind_int64(stmt, 3, to_ms);
+
+		double min = std::numeric_limits<double>::max();
+		double max = std::numeric_limits<double>::lowest();
+		double mean_sum = 0.0;
+		double p95_sum = 0.0;
+		int row_count = 0;
+
+		while (sqlite3_step(stmt) == SQLITE_ROW) {
+			int64_t bucket_ts = sqlite3_column_int64(stmt, 0);
+			double row_min = sqlite3_column_double(stmt, 1);
+			double row_max = sqlite3_column_double(stmt, 2);
+			double row_mean = sqlite3_column_double(stmt, 3);
+			double row_p95 = sqlite3_column_double(stmt, 4);
+
+			// the plotted value per point is the bucket's mean, min/max/p95 only feed the range-wide stats
+			result.points.push_back({ bucket_ts, row_mean });
+
+			if (row_min < min) min = row_min;
+			if (row_max > max) max = row_max;
+			mean_sum += row_mean;
+			p95_sum += row_p95;
+			row_count++;
+		}
+		sqlite3_finalize(stmt);
+
+		if (row_count > 0) {
+			result.has_data = true;
+			result.stats.min = min;
+			result.stats.max = max;
+			result.stats.mean = mean_sum / row_count;
+			// averaging per-bucket p95s isn't a true p95 across the whole range, same
+			// approximation Downsampler::run_1hr already makes for the 1hr table itself
+			result.stats.p95 = p95_sum / row_count;
+		}
+
+		return result;
 	}
 
 	// routes a reading to the right PulseFileWriter, creating one if needed and also handles midnight rollover

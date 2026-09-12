@@ -3,9 +3,9 @@
 #include <vector>
 #include <unordered_map>
 #include <mutex>
-
 #include <sqlite3.h>
 #include <boost/asio.hpp>
+#include <windows.h>
 
 #include "storage/Types.h"
 #include "storage/Downsampler.h"
@@ -27,6 +27,15 @@ namespace pulsedb {
 
         std::vector<MetricReading> query(const std::string& metric, int64_t from_ms, int64_t to_ms);
 
+        // one point per summary row (ts = bucket_ts, value = mean_val), plus aggregated
+        // stats across the whole range. resolution must be "1min" or "1hr".
+        struct SummaryQueryResult {
+            std::vector<MetricReading> points;
+            Downsampler::Stats stats{};
+            bool has_data = false;
+        };
+        SummaryQueryResult query_summary(const std::string& metric, int64_t from_ms, int64_t to_ms, const std::string& resolution);
+
         bool append(const std::string& metric, MetricType type, const MetricReading& reading);
         std::vector<std::string> get_active_metrics() const;
 
@@ -43,6 +52,11 @@ namespace pulsedb {
         // one writer per metric, created on the first append for that metric on the current day
         std::unordered_map<std::string, std::unique_ptr<PulseFileWriter>> m_writers;
         sqlite3* m_db = nullptr;
+
+        // os level lock, to prevent a second instance opening in the same directory
+        HANDLE m_lock_handle = INVALID_HANDLE_VALUE;
+        bool acquire_lock();
+        void release_lock();
 
         // drives the downsampler timer it runs on m_ioc_thread separate from the writer thread
         boost::asio::io_context m_ioc;
