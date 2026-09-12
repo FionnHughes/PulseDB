@@ -1,5 +1,6 @@
 #include <iostream>
 #include <chrono>
+#include <cstring>
 
 #include "lz4.h"
 
@@ -151,7 +152,7 @@ namespace pulsedb {
 		m_file.seekp(offsetof(FileHeader, chunk_count), std::ios::beg);
 		m_file.write(reinterpret_cast<const char*>(&new_chunk_count), sizeof(new_chunk_count));
 		if (!m_file.good()) return false;
-		
+
 		m_file.flush();
 		m_chunk_count = new_chunk_count;
 		m_chunk_buffer.clear();
@@ -195,4 +196,3 @@ namespace pulsedb {
 		m_file.write(reinterpret_cast<const char*>(&header), sizeof(header));
 	}
 }
-

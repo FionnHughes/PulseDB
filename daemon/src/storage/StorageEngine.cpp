@@ -19,7 +19,7 @@ namespace pulsedb {
 	bool StorageEngine::acquire_lock() {
 		std::filesystem::create_directories(m_data_dir);
 		std::string lock_path = (std::filesystem::path(m_data_dir) / ".pulsedb.lock").string();
-
+	#ifdef _WIN32
 		m_lock_handle = CreateFileA(
 			lock_path.c_str(),
 			GENERIC_READ | GENERIC_WRITE,
@@ -31,13 +31,34 @@ namespace pulsedb {
 		);
 
 		return m_lock_handle != INVALID_HANDLE_VALUE;
+	#else
+	    // must use :: for a global lookup as StorageEngine has a function open() - annoying design flaw
+        m_lock_fd = ::open(lock_path.c_str(), O_RDWR | O_CREAT, 0644);
+        if (m_lock_fd == -1) return false;
+
+        if (flock(m_lock_fd, LOCK_EX | LOCK_NB) != 0) {
+                ::close(m_lock_fd);
+                m_lock_fd = -1;
+                return false;
+        }
+
+        return true;
+    #endif
 	}
 
 	void StorageEngine::release_lock() {
+	#ifdef _WIN32
 		if (m_lock_handle != INVALID_HANDLE_VALUE) {
 			CloseHandle(m_lock_handle);
 			m_lock_handle = INVALID_HANDLE_VALUE;
 		}
+	#else
+        if (m_lock_fd != -1) {
+                flock(m_lock_fd, LOCK_UN);
+                ::close(m_lock_fd);
+                m_lock_fd = -1;
+        }
+    #endif
 	}
 
 	// creates the sqlite db if needed, replays any leftover WAL files from crashes, then starts the downsampler timer
@@ -179,7 +200,12 @@ namespace pulsedb {
 	std::string StorageEngine::ts_to_date_string(int64_t day_ts) {
 		time_t seconds = day_ts / 1000;
 		std::tm tm{};
-		gmtime_s(&tm, &seconds);
+	#ifdef _WIN32
+        gmtime_s(&tm, &seconds);
+	#else
+	    // they have swapped around returns
+        gmtime_r(&seconds, &tm);
+	#endif
 
 		char buf[16];
 		std::strftime(buf, sizeof(buf), "%Y-%m-%d", &tm);
