@@ -16,6 +16,14 @@ type QueryResponse = {
 
 const BASE = "http://localhost:7700";
 const MAX_CHART_POINTS = 500;
+// picks server-side resolution based on range length, avoids pulling raw
+// data over the wire for ranges where its already downsampled in sqlite
+function resolutionForRangeMs(rangeMs: number): "raw" | "1min" | "1hr" {
+  if (rangeMs <= 60 * 60 * 1000) return "raw";       // up to 1h
+  if (rangeMs <= 24 * 60 * 60 * 1000) return "1min"; // up to 24h
+  return "1hr";                                       // 7d
+}
+
 const SLIDE_MS = 220;
 
 const RANGE_PRESETS = [
@@ -293,22 +301,24 @@ export default function HistoricalExplorer() {
     return { from: to - presetMs, to };
   }
 
-  async function fetchMetric(metric: string, from: number, to: number, signal?: AbortSignal): Promise<QueryResponse> {
-    const res = await fetch(`${BASE}/api/query?metric=${encodeURIComponent(metric)}&from=${from}&to=${to}`, { signal });
+  async function fetchMetric(metric: string, from: number, to: number, signal?: AbortSignal, resolution: "raw" | "1min" | "1hr" = "raw"): Promise<QueryResponse> {
+    const res = await fetch(`${BASE}/api/query?metric=${encodeURIComponent(metric)}&from=${from}&to=${to}&resolution=${resolution}`, { signal });
     if (!res.ok) throw new Error(`status ${res.status}`);
     return res.json();
-  }
+}
 
   async function runQueryForRange(from: number, to: number) {
     if (!selection) return;
     if (!(from < to)) { setError("from must be before to"); return; }
 
+    const resolution = resolutionForRangeMs(to - from);
     const myId = ++queryIdRef.current;
     setLoading(true);
     try {
       if (selection.kind === "single") {
-        const res = await fetchMetric(selection.metric, from, to);
-        const bucketed = await bucketSingle(res.data, from, to, MAX_CHART_POINTS);
+        const res = await fetchMetric(selection.metric, from, to, undefined, resolution);
+        // server already downsampled 1min/1hr, only bucket further if this came back raw
+        const bucketed = resolution === "raw" ? await bucketSingle(res.data, from, to, MAX_CHART_POINTS) : res.data;
         if (myId !== queryIdRef.current) return;
         setChartData(bucketed);
         setStats(res.stats);
@@ -316,10 +326,13 @@ export default function HistoricalExplorer() {
         setComboData([]);
       } else {
         const [readRes, writeRes] = await Promise.all([
-          fetchMetric(selection.readMetric, from, to),
-          fetchMetric(selection.writeMetric, from, to),
+          fetchMetric(selection.readMetric, from, to, undefined, resolution),
+          fetchMetric(selection.writeMetric, from, to, undefined, resolution),
         ]);
-        const bucketed = await bucketPair(readRes.data, writeRes.data, from, to, MAX_CHART_POINTS);
+        const bucketed =
+          resolution === "raw"
+            ? await bucketPair(readRes.data, writeRes.data, from, to, MAX_CHART_POINTS)
+            : readRes.data.map((r, i) => ({ ts: r.ts, read: r.value, write: writeRes.data[i]?.value }));
         if (myId !== queryIdRef.current) return;
         setComboData(bucketed);
         setStats(null);
@@ -332,8 +345,7 @@ export default function HistoricalExplorer() {
     } finally {
       if (myId === queryIdRef.current) setLoading(false);
     }
-  }
-
+}
   function runQuery() {
     const { from, to } = activeRange();
     return runQueryForRange(from, to);

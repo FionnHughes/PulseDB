@@ -200,6 +200,8 @@ namespace pulsedb {
                     auto metric = req->getParameter("metric");
                     auto from_str = req->getParameter("from");
                     auto to_str = req->getParameter("to");
+                    auto resolution = req->getParameter("resolution");
+                    if (resolution.empty()) resolution = "raw";
 
                     if (metric.empty() || from_str.empty() || to_str.empty()) {
                         Json::Value err;
@@ -226,38 +228,63 @@ namespace pulsedb {
                         return;
                     }
 
-                    auto results = m_storage.query(metric, from_ms, to_ms);
-
-                    Json::Value data(Json::arrayValue);
-                    for (const auto& reading : results) {
-                        Json::Value point;
-                        point["ts"] = reading.timestamp_ms;
-                        point["value"] = reading.value;
-                        data.append(point);
-                    }
-
                     Json::Value j;
                     j["metric"] = metric;
-                    j["resolution"] = "raw";  // hardcoded for now
+                    j["resolution"] = resolution;
                     j["from"] = from_ms;
                     j["to"] = to_ms;
-                    j["count"] = static_cast<int>(results.size());
-                    j["data"] = data;
 
-                    // null instead of zeroed stats, so an empty range isnt mistaken for real zero data
-                    Json::Value stats_json;
-                    if (results.empty()) {
-                        stats_json = Json::Value(Json::nullValue);
+                    if (resolution == "1min" || resolution == "1hr") {
+                        auto summary = m_storage.query_summary(metric, from_ms, to_ms, resolution);
+
+                        Json::Value data(Json::arrayValue);
+                        for (const auto& point : summary.points) {
+                            Json::Value pj;
+                            pj["ts"] = point.timestamp_ms;
+                            pj["value"] = point.value;
+                            data.append(pj);
+                        }
+                        j["count"] = static_cast<int>(summary.points.size());
+                        j["data"] = data;
+
+                        Json::Value stats_json;
+                        if (!summary.has_data) {
+                            stats_json = Json::Value(Json::nullValue);
+                        }
+                        else {
+                            stats_json["min"] = summary.stats.min;
+                            stats_json["max"] = summary.stats.max;
+                            stats_json["mean"] = summary.stats.mean;
+                            stats_json["p95"] = summary.stats.p95;
+                        }
+                        j["stats"] = stats_json;
                     }
                     else {
-                        auto stats = Downsampler::compute_stats(results);
-                        stats_json["min"] = stats.min;
-                        stats_json["max"] = stats.max;
-                        stats_json["mean"] = stats.mean;
-                        stats_json["p95"] = stats.p95;
-                    }
+                        auto results = m_storage.query(metric, from_ms, to_ms);
 
-                    j["stats"] = stats_json;
+                        Json::Value data(Json::arrayValue);
+                        for (const auto& reading : results) {
+                            Json::Value point;
+                            point["ts"] = reading.timestamp_ms;
+                            point["value"] = reading.value;
+                            data.append(point);
+                        }
+                        j["count"] = static_cast<int>(results.size());
+                        j["data"] = data;
+
+                        Json::Value stats_json;
+                        if (results.empty()) {
+                            stats_json = Json::Value(Json::nullValue);
+                        }
+                        else {
+                            auto stats = Downsampler::compute_stats(results);
+                            stats_json["min"] = stats.min;
+                            stats_json["max"] = stats.max;
+                            stats_json["mean"] = stats.mean;
+                            stats_json["p95"] = stats.p95;
+                        }
+                        j["stats"] = stats_json;
+                    }
 
                     auto response = drogon::HttpResponse::newHttpJsonResponse(j);
                     callback(response);
@@ -495,6 +522,7 @@ namespace pulsedb {
                         j["resolved_at"] = static_cast<Json::Int64>(h.resolved_at);
                         j["peak_value"] = h.peak_value;
                         j["duration_seconds"] = static_cast<Json::Int64>(h.duration_seconds);
+                        j["note"] = h.note;
                         arr.append(j);
                     }
                     callback(drogon::HttpResponse::newHttpJsonResponse(arr));
