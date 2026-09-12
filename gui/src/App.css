@@ -1,1 +1,73 @@
 @import "tailwindcss";
+
+@theme {
+    --color-bg: #0A0E14;
+    --color-panel: #10141C;
+    --color-line: #1E2430;
+    --color-text: #D8DEE9;
+    --color-muted: #5C6773;
+    --color-cpu: #5FD3BC;
+    --color-ram: #E8B85C;
+    --font-mono-ui: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--color-bg);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-line);
+    border: 2px solid var(--color-bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-muted);
+}
+
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type=number] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+@keyframes slide-in-from-left {
+    from {
+        transform: translateX(-40px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+@keyframes slide-in-from-right {
+    from {
+        transform: translateX(40px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.animate-slide-in-from-left {
+    animation: slide-in-from-left 220ms ease-out;
+}
+
+.animate-slide-in-from-right {
+    animation: slide-in-from-right 220ms ease-out;
+}
