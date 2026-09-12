@@ -63,11 +63,14 @@ namespace pulsedb {
             sqlite3_free(err);
             return false;
         }
+
+        // add note column if this db predates it, harmless no-op if it already exists
+        sqlite3_exec(m_db, "ALTER TABLE alert_history ADD COLUMN note TEXT", nullptr, nullptr, nullptr);
+
         return true;
     }
 
     bool AlertEngine::seed_test_rules() {
-        // don't reseed if rules already exist
         const char* check_sql = "SELECT COUNT(*) FROM alert_rules;";
         sqlite3_stmt* stmt = nullptr;
         sqlite3_prepare_v2(m_db, check_sql, -1, &stmt, nullptr);
@@ -154,7 +157,7 @@ namespace pulsedb {
     }
 
     void AlertEngine::schedule_tick() {
-        m_timer.expires_after(std::chrono::seconds(5));
+        m_timer.expires_after(seconds(5));
         m_timer.async_wait([this](const boost::system::error_code&) {
             try {
                 on_tick();
@@ -339,6 +342,22 @@ namespace pulsedb {
     }
 
     bool AlertEngine::update_rule(int64_t id, const AlertRule& rule) {
+        // grab what this rule looked like right before the update, so we can tell
+        // if it just got disabled while actually firing
+        bool was_enabled = false;
+        AlertRuntimeState old_state;
+        bool had_state = false;
+        {
+            std::lock_guard<std::mutex> lock(m_rules_mutex);
+            auto rule_it = std::find_if(m_rules.begin(), m_rules.end(), [id](const AlertRule& r) { return r.id == id; });
+            if (rule_it != m_rules.end()) was_enabled = rule_it->enabled;
+            auto state_it = m_runtime_states.find(id);
+            if (state_it != m_runtime_states.end()) {
+                old_state = state_it->second;
+                had_state = true;
+            }
+        }
+
         const char* sql = "UPDATE alert_rules SET name=?, metric=?, rule_type=?, operator=?, value=?, "
             "duration_readings=?, change_percent=?, window_readings=?, cooldown_seconds=?, enabled=? WHERE id=?;";
         sqlite3_stmt* stmt = nullptr;
@@ -364,6 +383,31 @@ namespace pulsedb {
         bool ok = sqlite3_step(stmt) == SQLITE_DONE;
         sqlite3_finalize(stmt);
         if (ok) {
+            // was firing and just got switched off, log that it was stopped rather
+            // than silently discarding it with no record
+            if (was_enabled && !rule.enabled && had_state &&
+                (old_state.state == AlertState::Active || old_state.state == AlertState::Pending)) {
+                int64_t now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+                int64_t duration_sec = (now - old_state.state_entered_at_ms) / 1000;
+                std::string note = old_state.state == AlertState::Active
+                    ? "stopped - rule disabled while it was already active"
+                    : "stopped - rule disabled while pending, never fully triggered";
+
+                const char* history_sql = "INSERT INTO alert_history (rule_id, triggered_at, resolved_at, peak_value, duration_seconds, note) "
+                    "VALUES (?, ?, ?, ?, ?, ?);";
+                sqlite3_stmt* history_stmt = nullptr;
+                if (sqlite3_prepare_v2(m_db, history_sql, -1, &history_stmt, nullptr) == SQLITE_OK) {
+                    sqlite3_bind_int64(history_stmt, 1, id);
+                    sqlite3_bind_int64(history_stmt, 2, old_state.state_entered_at_ms);
+                    sqlite3_bind_int64(history_stmt, 3, now);
+                    sqlite3_bind_double(history_stmt, 4, old_state.peak_value);
+                    sqlite3_bind_int64(history_stmt, 5, duration_sec);
+                    sqlite3_bind_text(history_stmt, 6, note.c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_step(history_stmt);
+                    sqlite3_finalize(history_stmt);
+                }
+            }
+
             load_rules();
             std::lock_guard<std::mutex> lock(m_rules_mutex);
             m_runtime_states[id] = AlertRuntimeState{ id };
@@ -398,7 +442,7 @@ namespace pulsedb {
 
     std::vector<AlertHistoryEntry> AlertEngine::get_history(int limit, int offset, int64_t rule_id_filter) {
         std::vector<AlertHistoryEntry> results;
-        std::string sql = "SELECT id, rule_id, triggered_at, resolved_at, peak_value, duration_seconds FROM alert_history";
+        std::string sql = "SELECT id, rule_id, triggered_at, resolved_at, peak_value, duration_seconds, note FROM alert_history";
         if (rule_id_filter > 0) sql += " WHERE rule_id = ?";
         sql += " ORDER BY triggered_at DESC LIMIT ? OFFSET ?;";
 
@@ -418,6 +462,8 @@ namespace pulsedb {
             e.resolved_at = sqlite3_column_int64(stmt, 3);
             e.peak_value = sqlite3_column_double(stmt, 4);
             e.duration_seconds = sqlite3_column_int64(stmt, 5);
+            const unsigned char* note_text = sqlite3_column_text(stmt, 6);
+            e.note = note_text ? reinterpret_cast<const char*>(note_text) : "";
             results.push_back(e);
         }
         sqlite3_finalize(stmt);
@@ -434,7 +480,6 @@ namespace pulsedb {
         return ok;
     }
 
-    // returns how many rows got wiped, so the gui can show a real count instead of just "done"
     int AlertEngine::delete_history_older_than(int64_t cutoff_ms) {
         const char* sql = "DELETE FROM alert_history WHERE triggered_at < ?;";
         sqlite3_stmt* stmt = nullptr;
@@ -446,7 +491,6 @@ namespace pulsedb {
         return deleted;
     }
 
-    // snapshot of any rule currently pending or active, for the gui to show live
     std::vector<Json::Value> AlertEngine::get_active_states() {
         std::vector<Json::Value> out;
         std::lock_guard<std::mutex> lock(m_rules_mutex);
@@ -456,7 +500,6 @@ namespace pulsedb {
             if (it == m_runtime_states.end()) continue;
             const AlertRuntimeState& state = it->second;
 
-            // only pending or active are interesting here, inactive arent "currently firing"
             if (state.state != AlertState::Pending && state.state != AlertState::Active) continue;
 
             Json::Value j;
@@ -510,4 +553,5 @@ namespace pulsedb {
         r.enabled = j.get("enabled", true).asBool();
         return r;
     }
+
 }

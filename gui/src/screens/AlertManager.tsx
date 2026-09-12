@@ -21,6 +21,7 @@ type HistoryEntry = {
   resolved_at: number;
   peak_value: number;
   duration_seconds: number;
+  note: string;
 };
 
 type ActiveState = {
@@ -48,6 +49,39 @@ function humanizeAlertMetric(metric: string): string {
   return metric;
 }
 
+function unitForMetric(metric: string): "percent" | "gb" | "mb-per-s" | "mbps" | "raw" {
+  if (metric.includes("percent")) return "percent";
+  if (metric.includes("bytes")) return "gb";
+  if (metric.startsWith("disk_")) return "mb-per-s";
+  if (metric.startsWith("net_")) return "mbps";
+  return "raw";
+}
+
+function toRawValue(metric: string, displayValue: number): number {
+  const unit = unitForMetric(metric);
+  if (unit === "gb") return displayValue * 1024 * 1024 * 1024;
+  if (unit === "mb-per-s") return displayValue * 1024 * 1024;
+  if (unit === "mbps") return (displayValue * 1_000_000) / 8;
+  return displayValue;
+}
+
+function toDisplayValue(metric: string, rawValue: number): number {
+  const unit = unitForMetric(metric);
+  if (unit === "gb") return rawValue / 1024 / 1024 / 1024;
+  if (unit === "mb-per-s") return rawValue / 1024 / 1024;
+  if (unit === "mbps") return (rawValue * 8) / 1_000_000;
+  return rawValue;
+}
+
+function unitLabel(metric: string): string {
+  const unit = unitForMetric(metric);
+  if (unit === "percent") return "%";
+  if (unit === "gb") return "GB";
+  if (unit === "mb-per-s") return "MB/s";
+  if (unit === "mbps") return "Mbps";
+  return "";
+}
+
 function humanizeValue(metric: string, value: number): string {
   if (metric.includes("percent")) return `${value.toFixed(0)}%`;
   if (metric.includes("bytes")) return `${(value / 1024 / 1024 / 1024).toFixed(1)} GB`;
@@ -56,7 +90,6 @@ function humanizeValue(metric: string, value: number): string {
   return String(value);
 }
 
-// same idea as humanizeValue but for a bare peak number with no operator attached
 function formatPeak(metric: string, value: number): string {
   if (metric.includes("percent")) return `${value.toFixed(1)}%`;
   if (metric.includes("bytes")) return `${(value / 1024 / 1024 / 1024).toFixed(2)} GB`;
@@ -91,107 +124,6 @@ const emptyRule: Omit<Rule, "id"> = {
   enabled: true,
 };
 
-type MetricPickerItem = { label: string; metric: string };
-type MetricPickerGroup = { name: string; items: MetricPickerItem[] };
-
-// same grouping idea as historical explorer's picker, but matched against the alert-side metric naming (_percent/_bytes) instead of the .pulse storage naming, since those are two different naming schemes in this project
-function buildAlertMetricGroups(): MetricPickerGroup[] {
-  return [
-    {
-      name: "CPU",
-      items: [
-        { label: "CPU Total", metric: "cpu_total_percent" },
-        ...Array.from({ length: 16 }, (_, i) => ({ label: `CPU Core ${i}`, metric: `cpu_core_${i}` })),
-      ],
-    },
-    {
-      name: "RAM",
-      items: [
-        { label: "RAM Used", metric: "ram_used_bytes" },
-        { label: "RAM Available", metric: "ram_available_bytes" },
-        { label: "Swap Used", metric: "swap_used_bytes" },
-      ],
-    },
-    {
-      name: "Disk",
-      items: Array.from({ length: 4 }, (_, i) => [
-        { label: `Disk ${i} Read`, metric: `disk_${i}_read` },
-        { label: `Disk ${i} Write`, metric: `disk_${i}_write` },
-      ]).flat(),
-    },
-    {
-      name: "Network",
-      items: Array.from({ length: 4 }, (_, i) => [
-        { label: `Adapter ${i} In`, metric: `net_${i}_in` },
-        { label: `Adapter ${i} Out`, metric: `net_${i}_out` },
-      ]).flat(),
-    },
-  ];
-}
-
-function MetricSearchPicker({ value, onChange }: { value: string; onChange: (metric: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const groups = buildAlertMetricGroups();
-
-  // flatten + filter by search text, matching against either the readable label or raw metric name
-  const filtered = search
-    ? groups
-        .map((g) => ({
-          name: g.name,
-          items: g.items.filter(
-            (i) => i.label.toLowerCase().includes(search.toLowerCase()) || i.metric.toLowerCase().includes(search.toLowerCase())
-          ),
-        }))
-        .filter((g) => g.items.length > 0)
-    : groups;
-
-  const selectedLabel = groups.flatMap((g) => g.items).find((i) => i.metric === value)?.label;
-
-  return (
-    <div className="relative col-span-1">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="bg-bg border border-line px-2 py-1 text-sm w-full text-left flex flex-col"
-      >
-        <span>{selectedLabel ?? "select metric"}</span>
-        {value && <span className="text-muted text-xs">{value}</span>}
-      </button>
-
-      {open && (
-        <div className="absolute z-20 mt-1 w-64 border border-line bg-panel max-h-72 overflow-auto">
-          <input
-            autoFocus
-            className="w-full bg-bg border-b border-line px-2 py-1 text-xs outline-none"
-            placeholder="search metrics..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          {filtered.map((g) => (
-            <div key={g.name}>
-              <div className="px-2 py-1 text-xs text-muted border-b border-line/50">{g.name}</div>
-              {g.items.map((item) => (
-                <button
-                  key={item.metric}
-                  type="button"
-                  onClick={() => { onChange(item.metric); setOpen(false); setSearch(""); }}
-                  className={`w-full text-left px-3 py-1 text-xs flex flex-col ${
-                    item.metric === value ? "text-cpu" : "text-muted hover:text-text"
-                  }`}
-                >
-                  <span>{item.label}</span>
-                  <span className="text-muted text-xs">{item.metric}</span>
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function AlertManager() {
   const [rules, setRules] = useState<Rule[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -199,6 +131,8 @@ export default function AlertManager() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyRule);
+  const [displayValue, setDisplayValue] = useState(90);
+  const [justToggledId, setJustToggledId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [historySearch, setHistorySearch] = useState("");
 
@@ -244,11 +178,14 @@ export default function AlertManager() {
 
   async function toggleEnabled(rule: Rule) {
     const ok = await writeRequest(`${BASE}/api/alerts/rules/${rule.id}`, "PUT", { ...rule, enabled: !rule.enabled });
-    if (ok) loadAll();
+    if (!ok) return;
+    setJustToggledId(rule.id);
+    await loadAll();
+    setTimeout(loadAll, 2500);
+    setTimeout(() => { loadAll(); setJustToggledId(null); }, 5500);
   }
 
   async function deleteRule(id: number) {
-    // block deleting a rule that's currently pending/active, since delete silently discards it with no history record at all, per how we want delete/edit to behave (as if the rule never fired)
     const firing = active.find((a) => a.rule_id === id);
     if (firing) {
       alert(`can't delete "${firing.name}" right now — it's currently ${firing.state}. wait for it to resolve first, or it'll be discarded with no record.`);
@@ -260,35 +197,38 @@ export default function AlertManager() {
   }
 
   async function deleteHistoryEntry(id: number) {
-  if (!confirm("delete this history entry?")) return;
-  const ok = await writeRequest(`${BASE}/api/alerts/history/${id}`, "DELETE");
-  if (ok) loadAll();
-}
+    if (!confirm("delete this history entry?")) return;
+    const ok = await writeRequest(`${BASE}/api/alerts/history/${id}`, "DELETE");
+    if (ok) loadAll();
+  }
 
-async function clearOlderThanWeek() {
-  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  if (!confirm("clear all history older than 1 week?")) return;
-  const ok = await writeRequest(`${BASE}/api/alerts/history?older_than_ms=${cutoff}`, "DELETE");
-  if (ok) loadAll();
-}
+  async function clearOlderThanWeek() {
+    const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    if (!confirm("clear all history older than 1 week?")) return;
+    const ok = await writeRequest(`${BASE}/api/alerts/history?older_than_ms=${cutoff}`, "DELETE");
+    if (ok) loadAll();
+  }
 
   function startEdit(rule: Rule) {
     setEditingId(rule.id);
     setForm({ ...rule });
+    setDisplayValue(toDisplayValue(rule.metric, rule.value));
     setShowForm(true);
   }
 
   function startCreate() {
     setEditingId(null);
     setForm(emptyRule);
+    setDisplayValue(toDisplayValue(emptyRule.metric, emptyRule.value));
     setShowForm((s) => !s);
   }
 
   async function submitForm() {
+    const payload = { ...form, value: toRawValue(form.metric, displayValue) };
     const ok =
       editingId !== null
-        ? await writeRequest(`${BASE}/api/alerts/rules/${editingId}`, "PUT", form)
-        : await writeRequest(`${BASE}/api/alerts/rules`, "POST", form);
+        ? await writeRequest(`${BASE}/api/alerts/rules/${editingId}`, "PUT", payload)
+        : await writeRequest(`${BASE}/api/alerts/rules`, "POST", payload);
     if (!ok) return;
     setForm(emptyRule);
     setEditingId(null);
@@ -342,7 +282,14 @@ async function clearOlderThanWeek() {
             value={form.name}
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
-          <MetricSearchPicker value={form.metric} onChange={(metric) => setForm({ ...form, metric })} />
+          <MetricSearchPicker
+            value={form.metric}
+            onChange={(metric) => {
+              const rawEquivalent = toRawValue(form.metric, displayValue);
+              setForm({ ...form, metric });
+              setDisplayValue(toDisplayValue(metric, rawEquivalent));
+            }}
+          />
           <select
             className="bg-bg border border-line px-2 py-1 text-sm"
             value={form.rule_type}
@@ -362,13 +309,16 @@ async function clearOlderThanWeek() {
             <option value="gte">greater or equal</option>
             <option value="lte">less or equal</option>
           </select>
-          <input
-            type="number"
-            className="bg-bg border border-line px-2 py-1 text-sm"
-            placeholder="threshold value"
-            value={form.value}
-            onChange={(e) => setForm({ ...form, value: Number(e.target.value) })}
-          />
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              className="bg-bg border border-line px-2 py-1 text-sm flex-1"
+              placeholder="threshold value"
+              value={displayValue}
+              onChange={(e) => setDisplayValue(Number(e.target.value))}
+            />
+            <span className="text-muted text-xs w-12">{unitLabel(form.metric)}</span>
+          </div>
           {form.rule_type === "sustained_threshold" && (
             <input
               type="number"
@@ -412,9 +362,12 @@ async function clearOlderThanWeek() {
             </div>
             <div className="flex gap-3 items-center">
               <button onClick={() => startEdit(r)} className="text-muted hover:text-text text-xs">edit</button>
-              <button onClick={() => toggleEnabled(r)} className={`text-xs ${r.enabled ? "text-cpu" : "text-muted"}`}>
-                {r.enabled ? "enabled" : "disabled"}
-              </button>
+              <button
+                  onClick={() => toggleEnabled(r)}
+                  className={`text-xs ${r.enabled ? "text-cpu" : "text-muted"} ${justToggledId === r.id ? "animate-pulse" : ""}`}
+                >
+                  {r.enabled ? "enabled" : "disabled"}
+                </button>
               <button onClick={() => deleteRule(r.id)} className="text-muted hover:text-red-400 text-xs">×</button>
             </div>
           </div>
@@ -445,16 +398,118 @@ async function clearOlderThanWeek() {
         {filteredHistory.map((h) => {
           const rule = rules.find((r) => r.id === h.rule_id);
           return (
-            <div key={h.id} className="flex justify-between items-center px-3 py-1.5 border-b border-line/50 text-xs tabular-nums">
-              <span className="text-muted">{ruleNameById.get(h.rule_id) ?? `rule #${h.rule_id}`}</span>
-              <span>peak {rule ? formatPeak(rule.metric, h.peak_value) : h.peak_value.toFixed(1)}</span>
-              <span className="text-muted">{h.duration_seconds}s</span>
-              <span className="text-muted">{new Date(h.triggered_at).toLocaleTimeString()}</span>
-              <button onClick={() => deleteHistoryEntry(h.id)} className="text-muted hover:text-red-400 ml-2">×</button>
+            <div key={h.id} className="px-3 py-1.5 border-b border-line/50 text-xs">
+              <div className="flex justify-between items-center tabular-nums">
+                <span className="text-muted">{ruleNameById.get(h.rule_id) ?? `rule #${h.rule_id}`}</span>
+                <span>peak {rule ? formatPeak(rule.metric, h.peak_value) : h.peak_value.toFixed(1)}</span>
+                <span className="text-muted">{h.duration_seconds}s</span>
+                <span className="text-muted">{new Date(h.triggered_at).toLocaleTimeString()}</span>
+                <button onClick={() => deleteHistoryEntry(h.id)} className="text-muted hover:text-red-400 ml-2">×</button>
+              </div>
+              {h.note && <div className="text-muted mt-1">{h.note}</div>}
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+type MetricPickerItem = { label: string; metric: string };
+type MetricPickerGroup = { name: string; items: MetricPickerItem[] };
+
+function buildAlertMetricGroups(): MetricPickerGroup[] {
+  return [
+    {
+      name: "CPU",
+      items: [
+        { label: "CPU Total", metric: "cpu_total_percent" },
+        ...Array.from({ length: 16 }, (_, i) => ({ label: `CPU Core ${i}`, metric: `cpu_core_${i}` })),
+      ],
+    },
+    {
+      name: "RAM",
+      items: [
+        { label: "RAM Used", metric: "ram_used_bytes" },
+        { label: "RAM Available", metric: "ram_available_bytes" },
+        { label: "Swap Used", metric: "swap_used_bytes" },
+      ],
+    },
+    {
+      name: "Disk",
+      items: Array.from({ length: 4 }, (_, i) => [
+        { label: `Disk ${i} Read`, metric: `disk_${i}_read` },
+        { label: `Disk ${i} Write`, metric: `disk_${i}_write` },
+      ]).flat(),
+    },
+    {
+      name: "Network",
+      items: Array.from({ length: 4 }, (_, i) => [
+        { label: `Adapter ${i} In`, metric: `net_${i}_in` },
+        { label: `Adapter ${i} Out`, metric: `net_${i}_out` },
+      ]).flat(),
+    },
+  ];
+}
+
+function MetricSearchPicker({ value, onChange }: { value: string; onChange: (metric: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const groups = buildAlertMetricGroups();
+
+  const filtered = search
+    ? groups
+        .map((g) => ({
+          name: g.name,
+          items: g.items.filter(
+            (i) => i.label.toLowerCase().includes(search.toLowerCase()) || i.metric.toLowerCase().includes(search.toLowerCase())
+          ),
+        }))
+        .filter((g) => g.items.length > 0)
+    : groups;
+
+  const selectedLabel = groups.flatMap((g) => g.items).find((i) => i.metric === value)?.label;
+
+  return (
+    <div className="relative col-span-1">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="bg-bg border border-line px-2 py-1 text-sm w-full text-left flex flex-col"
+      >
+        <span>{selectedLabel ?? "select metric"}</span>
+        {value && <span className="text-muted text-xs">{value}</span>}
+      </button>
+
+      {open && (
+        <div className="absolute z-20 mt-1 w-64 border border-line bg-panel max-h-72 overflow-auto">
+          <input
+            autoFocus
+            className="w-full bg-bg border-b border-line px-2 py-1 text-xs outline-none"
+            placeholder="search metrics..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {filtered.map((g) => (
+            <div key={g.name}>
+              <div className="px-2 py-1 text-xs text-muted border-b border-line/50">{g.name}</div>
+              {g.items.map((item) => (
+                <button
+                  key={item.metric}
+                  type="button"
+                  onClick={() => { onChange(item.metric); setOpen(false); setSearch(""); }}
+                  className={`w-full text-left px-3 py-1 text-xs flex flex-col ${
+                    item.metric === value ? "text-cpu" : "text-muted hover:text-text"
+                  }`}
+                >
+                  <span>{item.label}</span>
+                  <span className="text-muted text-xs">{item.metric}</span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
