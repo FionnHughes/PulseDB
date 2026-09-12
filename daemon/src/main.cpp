@@ -37,6 +37,7 @@ int main() {
 
     // instantiates api server after ring is established
     pulsedb::ApiServer api(storage, ring, config.api_port);
+    api.set_config(config);
 
     // own sqlite connection, separate from storage's, same db file
     pulsedb::AlertEngine alerts;

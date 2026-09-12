@@ -68,6 +68,10 @@ namespace pulsedb {
         m_alert_engine = engine;
     }
 
+    void ApiServer::set_config(const Config& cfg) {
+        m_config = cfg;
+    }
+
     // drogon blocks on run() so it needs its own thread so crash here doesn't kill the daemon silently
     void ApiServer::start() {
         m_thread = std::thread([this]() {
@@ -326,6 +330,66 @@ namespace pulsedb {
                     callback(resp);
             },
             { drogon::Post }
+        );
+
+        drogon::app().registerHandler(
+            "/api/config",
+            [this](const drogon::HttpRequestPtr& req,
+                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+
+                    Json::Value j;
+                    j["api_port"] = m_config.api_port;
+                    j["data_directory"] = m_config.data_directory;
+                    j["collection_interval_ms"] = m_config.collection_interval_ms;
+                    j["retention"]["raw_days"] = m_config.retention_raw_days;
+                    j["retention"]["summary_1min_days"] = m_config.retention_1min_days;
+                    j["retention"]["summary_1hr_days"] = m_config.retention_1hr_days;
+
+                    callback(drogon::HttpResponse::newHttpJsonResponse(j));
+            },
+            { drogon::Get }
+        );
+
+        drogon::app().registerHandler(
+            "/api/config",
+            [this](const drogon::HttpRequestPtr& req,
+                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+
+                    auto json = req->getJsonObject();
+                    if (!json) {
+                        auto resp = drogon::HttpResponse::newHttpResponse();
+                        resp->setStatusCode(drogon::k400BadRequest);
+                        callback(resp);
+                        return;
+                    }
+
+                    // only overwrite fields that were actually sent, keep the rest as-is
+                    Config updated = m_config;
+                    if (json->isMember("api_port")) updated.api_port = (*json)["api_port"].asUInt();
+                    if (json->isMember("data_directory")) updated.data_directory = (*json)["data_directory"].asString();
+                    if (json->isMember("collection_interval_ms")) updated.collection_interval_ms = (*json)["collection_interval_ms"].asInt();
+                    if (json->isMember("retention")) {
+                        auto& r = (*json)["retention"];
+                        if (r.isMember("raw_days")) updated.retention_raw_days = r["raw_days"].asInt();
+                        if (r.isMember("summary_1min_days")) updated.retention_1min_days = r["summary_1min_days"].asInt();
+                        if (r.isMember("summary_1hr_days")) updated.retention_1hr_days = r["summary_1hr_days"].asInt();
+                    }
+
+                    if (!save_config(updated)) {
+                        auto resp = drogon::HttpResponse::newHttpResponse();
+                        resp->setStatusCode(drogon::k500InternalServerError);
+                        callback(resp);
+                        return;
+                    }
+
+                    m_config = updated;
+
+                    Json::Value j;
+                    j["saved"] = true;
+                    j["restart_required"] = true; // nothing hot-reloads yet, being upfront about it in the response itself
+                    callback(drogon::HttpResponse::newHttpJsonResponse(j));
+            },
+            { drogon::Put }
         );
     }
 

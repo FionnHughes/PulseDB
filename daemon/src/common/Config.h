@@ -15,4 +15,6 @@ namespace pulsedb {
 
     // loads config from the fixed path, creating it with defaults if it doesn't exist, and falling back to defaults per field if any problems arise
     Config load_config();
+    // writes cfg to the same fixed path load_config() reads from
+    bool save_config(const Config& cfg);
 }

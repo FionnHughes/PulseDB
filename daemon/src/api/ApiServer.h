@@ -11,6 +11,7 @@
 #include "../collector/MetricSnapshot.h"
 #include "../collector/ProcessCollector.h"
 #include "../alerts/AlertEngine.h"
+#include "../common/Config.h"
 
 namespace pulsedb {
 
@@ -23,6 +24,7 @@ namespace pulsedb {
         void set_shutdown_callback(std::function<void()> cb);
         void set_process_collector(ProcessCollector* pc);
         void set_alert_engine(AlertEngine* engine);
+        void set_config(const Config& cfg);
 
         void start();
         void stop();
@@ -33,6 +35,7 @@ namespace pulsedb {
 
         ProcessCollector* m_process_collector = nullptr;
         AlertEngine* m_alert_engine = nullptr;
+        Config m_config;
 
         uint16_t m_port;
         std::thread m_thread;

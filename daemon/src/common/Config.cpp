@@ -75,4 +75,19 @@ namespace pulsedb {
 
         return cfg;
     }
+
+    // writes cfg back to CONFIG_PATH, overwriting whatever's already there
+    bool save_config(const Config& cfg) {
+        std::filesystem::path path(CONFIG_PATH);
+        try {
+            std::filesystem::create_directories(path.parent_path());
+            std::ofstream out(path);
+            if (!out) return false;
+            out << config_to_json(cfg).dump(4);
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
 }
