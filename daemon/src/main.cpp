@@ -35,7 +35,7 @@ int main() {
     // last 5 minutes of snapshots kept in memory for a live API later
     RingBuffer<pulsedb::MetricSnapshot, 300> ring;
 
-    //instantiates api server after ring is established
+    // instantiates api server after ring is established
     pulsedb::ApiServer api(storage, ring, config.api_port);
 
     // own sqlite connection, separate from storage's, same db file
@@ -57,11 +57,10 @@ int main() {
     // initializes all collectors then starts the first tick
     scheduler.start();
 
-    // starting the api server after collecters
+    // starting the api server after collectors
     api.start();
 
-    // alert engine needs a few ticks of real data in the ring before it's worth evaluating,
-    // but starting it right away is fine, it just skips ticks where the ring's still empty
+    // alert engine needs a few ticks of real data in the ring before it's worth evaluating, but starting it right away is fine, it just skips ticks where the ring's still empty
     alerts.start();
 
     api.set_alert_engine(&alerts);

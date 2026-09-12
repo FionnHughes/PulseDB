@@ -22,7 +22,7 @@ namespace pulsedb {
             return instance;
         }
 
-        // returns the function pointer to be null if ntdll failed to load which basically will never happen but
+        // null if ntdll failed to load - basically never happens but callers should still check
         NtQuerySystemInformationFn query_fn() const {
             return m_query_fn;
         }
@@ -43,7 +43,7 @@ namespace pulsedb {
             // ntdll.dll is always loaded in every Windows process so GetModuleHandle is fine here (no need for LoadLibrary which i originally thought)
             HMODULE handle = GetModuleHandleW(L"ntdll.dll");
             if (handle) {
-                // GetProcAddress returns void* so it is casted correctly 
+                // GetProcAddress returns void* so it needs a cast to the function pointer type
                 m_query_fn = reinterpret_cast<NtQuerySystemInformationFn>(GetProcAddress(handle, "NtQuerySystemInformation"));
             }
         }

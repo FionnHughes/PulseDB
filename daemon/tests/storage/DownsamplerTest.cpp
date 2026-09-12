@@ -118,8 +118,7 @@ namespace pulsedb {
 
 	// 100 values: old formula returned 96, correct nearest-rank returns 95
 	TEST_F(DownsamplerTest, ComputeStatsP95NearestRank) {
-		// Old formula: values[size_t(0.95 * 100)] = values[95] = 96  (wrong)
-		// Correct nearest-rank: values[ceil(0.95*100)-1] = values[94] = 95
+		// old formula was values[size_t(0.95*100)] = values[95] = 96 (wrong), correct nearest-rank is values[ceil(0.95*100)-1] = values[94] = 95
 		std::vector<MetricReading> readings;
 		for (int i = 1; i <= 100; i++) {
 			readings.push_back({ 0, static_cast<double>(i) });

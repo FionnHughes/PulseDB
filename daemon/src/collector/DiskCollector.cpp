@@ -4,7 +4,7 @@
 #include "common/Utils.h"
 
 namespace {
-	//storing strange path names in variables to help readability 
+	// PDH counter paths, one per disk stat we pull
 	constexpr const wchar_t* read_bytes_path = L"\\PhysicalDisk(*)\\Disk Read Bytes/sec";
 	constexpr const wchar_t* read_write_path = L"\\PhysicalDisk(*)\\Disk Write Bytes/sec";
 	constexpr const wchar_t* time_path = L"\\PhysicalDisk(*)\\% Disk Time";
@@ -12,20 +12,18 @@ namespace {
 }
 
 namespace pulsedb {
-	//name! mind blowing
 	std::string DiskCollector::name() const {
 		return "disk";
 	}
 
 	// opens a PDH query and registers the four per disk counters we want
 	bool DiskCollector::initialize() {
-		//opens a new pdh 
 		if (!m_pdh.open()) {
 			m_degraded = true;
 			return false;
 		}
 
-		//registering counters and getting idxs
+		// same add_counter -> check -1 -> degrade pattern for each of the four counters
 		m_read_bytes_idx = m_pdh.add_counter(read_bytes_path);
 		if (m_read_bytes_idx < 0) {
 			m_degraded = true;
@@ -60,7 +58,6 @@ namespace pulsedb {
 		if (!m_pdh.collect()) {
 			return false;
 		}
-		// defining a vector of pairs to get return values from counter array
 		std::vector<std::pair<std::wstring, double>> reads, writes, utilization, queue;
 
 		if (!m_pdh.get_all_doubles(m_read_bytes_idx, reads)) { return false; }

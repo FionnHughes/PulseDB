@@ -63,7 +63,7 @@ namespace pulsedb {
 		return true;
 	}
 
-	// reads all inctance formatted value from a counter (for counters with multiple instances)
+	// reads every instance's formatted value from a counter (for counters with multiple instances)
 	bool PdhWrapper::get_all_doubles(int counter_idx, std::vector<std::pair<std::wstring, double>>& out) const {
 		if (counter_idx < 0 || counter_idx >= static_cast<int>(m_counters.size())) {
 			return false;

@@ -114,7 +114,7 @@ namespace pulsedb {
         engine3.open();
         engine3.start_writer(queue);
 
-        //2023-11-14 23:59:59.000 UTC  and  2023-11-15 00:00:01.000 UTC
+        // 2023-11-14 23:59:59.000 UTC and 2023-11-15 00:00:01.000 UTC
         int64_t ts_before = 1700006399000LL;
         int64_t ts_after = 1700006401000LL;
 

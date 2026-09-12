@@ -25,11 +25,11 @@ namespace pulsedb {
         disk_collector.collect();
         disk_collector.fill_snapshot(snap);
 
-        //ensuring there is at least 1 disk, may want to change
+        // ensuring there is at least 1 disk, may want to change
         EXPECT_GT(snap.disks.size(), 0u);
         for (const auto& d : snap.disks) {
             EXPECT_FALSE(d.device_name.empty());
-            //greater or equal to as disk can be fully idle
+            // greater or equal to as disk can be fully idle
             EXPECT_GE(d.utilization_percent, 0.0f);
             EXPECT_LE(d.utilization_percent, 100.0f);
         }

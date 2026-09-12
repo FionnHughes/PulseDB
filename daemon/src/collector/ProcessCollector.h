@@ -46,7 +46,7 @@ namespace pulsedb {
 		std::vector<ProcessCandidate> m_temp_candidates;
 		std::vector<uint64_t> m_temp_cycle_delta;
 
-		// cpu percentages are arent useful on the first tick since theres nothing compute deltas against
+		// cpu percentages arent useful on the first tick since theres nothing to compute deltas against
 		bool m_first_tick{ true };
 
 		// incremented every tick to detect which PIDs disappeared since the last collection

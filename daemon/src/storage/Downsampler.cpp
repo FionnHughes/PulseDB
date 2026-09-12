@@ -87,7 +87,7 @@ namespace pulsedb {
 			if (readings.empty()) continue;
 			Stats stat = compute_stats(readings);
 			if (!write_1min(metric, bucket_ts, stat)) {
-				// log failure
+				// TODO: this just drops the failed write on the floor right now
 			}
 		}
 

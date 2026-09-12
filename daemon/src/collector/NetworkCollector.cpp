@@ -30,12 +30,11 @@ namespace pulsedb {
 			return false;
 		}
 		
-		//storing ticks now to compare against later
 		LARGE_INTEGER now;
 		QueryPerformanceCounter(&now);
 		m_prev_ticks = now.QuadPart;
-		
-		//looping through the tables rows and extracting info
+
+		// seeds m_prev for every physical adapter so the first real collect() has deltas to compare against
 		for (ULONG i = 0; i < table->NumEntries; i++) {
 			const auto& row = table->Table[i];
 			if (row.Type == IF_TYPE_SOFTWARE_LOOPBACK || row.Type == IF_TYPE_TUNNEL) {

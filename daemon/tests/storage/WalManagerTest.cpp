@@ -44,7 +44,7 @@ namespace pulsedb {
         ASSERT_TRUE(std::equal(result_bytes.begin(), result_bytes.end(), expected.begin()));
     }
 
-    // cuts the WAL to simulate a bad write mid entry and the replay should skip the corrupt entry and shoudnt touch the target file
+    // cuts the WAL to simulate a bad write mid entry and the replay should skip the corrupt entry and shouldnt touch the target file
     TEST_F(WalManagerTest, TornWriteDetection) {
         std::vector<uint8_t> chunk_data(100, 0xAB);
         {
@@ -87,8 +87,7 @@ namespace pulsedb {
 
     // simulates the real case where the .pulse file already has a header before the crash where replay appends the chunk after the existing content
     TEST_F(WalManagerTest, AppendAndReplayWithExistingFile) {
-        //make a .pulse file with a 23104-byte header and index already written
-        //exactly what PulseFileWriter creates on open() for a new file
+        // a .pulse file with a 23104-byte header and index already written, exactly what PulseFileWriter creates on open() for a new file
         constexpr size_t PULSE_HEADER_SIZE = 23104;
         {
             std::ofstream preexist(target_path, std::ios::binary);
@@ -100,7 +99,7 @@ namespace pulsedb {
         {
             WalManager manager(wal_path);
             manager.append(target_path, chunk_data);
-            //if crash here, chunk was not written to .pulse
+            // if crash here, chunk was not written to .pulse
         }
 
         // First replay: should append the chunk

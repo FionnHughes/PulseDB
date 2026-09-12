@@ -26,7 +26,7 @@ namespace pulsedb {
         ProcessCollector* get_process_collector() const { return m_process_collector; }
 
     private:
-        // all active collectors and are run every tick
+        // all active collectors, run every tick
         std::vector<std::unique_ptr<IMetricCollector>> m_collectors;
 
         // asio event loop that drives the timer
@@ -34,7 +34,7 @@ namespace pulsedb {
         boost::asio::steady_timer m_timer;
         std::thread m_io_thread;
 
-        // reused every tick - vecctors get cleared at the start of each tick to avoid stale data
+        // reused every tick - vectors get cleared at the start of each tick to avoid stale data
         MetricSnapshot m_snapshot;
         SpscQueue<MetricSnapshot, 1024>& m_queue;
         RingBuffer<MetricSnapshot, 300>& m_ring;

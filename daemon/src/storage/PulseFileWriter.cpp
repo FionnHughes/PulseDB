@@ -165,7 +165,7 @@ namespace pulsedb {
 
 	// pre-allocates all 1440 index slots so writes can seek directly to the right slot without appending
 	void PulseFileWriter::write_blank_index() {
-		//chunks now begin at byte 23,104 (DATA_START_OFFSET)
+		// chunks now begin at byte 23,104 (DATA_START_OFFSET)
 		std::vector<uint8_t> blank(MAX_CHUNKS_PER_DAY * INDEX_ENTRY_SIZE, 0x00);
 		m_file.write(reinterpret_cast<const char*>(blank.data()), blank.size());
 		m_file.flush();

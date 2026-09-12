@@ -64,7 +64,7 @@ namespace pulsedb {
 
         std::thread m_writer_thread;
         
-        // signals the writer thread to stop and the thread drains remaining queue items before it actaully exitss
+        // signals the writer thread to stop, it drains remaining queue items before it actually exits
         std::atomic<bool> m_writer_running{ false };
     };
 }

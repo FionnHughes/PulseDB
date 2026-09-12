@@ -36,7 +36,7 @@ namespace pulsedb {
 		delete_1hr_rows(hr_cutoff);
 	}
 
-	// walks the data directory looking for.pulse files older than the cutoff and removes them
+	// walks the data directory looking for .pulse files older than the cutoff and removes them
 	bool RetentionManager::delete_pulse_files(int64_t cutoff_ms) {
 		bool success = true;
 		for (const std::filesystem::directory_entry& file : std::filesystem::recursive_directory_iterator(m_data_dir)) {

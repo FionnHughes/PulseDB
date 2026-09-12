@@ -9,9 +9,7 @@
 #include "common/Utils.h"
 
 namespace {
-	//this is the full SYSTEM_PROCESS_INFORMATION for 64 bit Win
-	//winternl.h only shows a few fields, minimal amount, so i have it defined here to access CycleTime, WorkingSetSize, HandleCount etc.
-	//order and offsets from geoffchappell.com docs.
+	// full SYSTEM_PROCESS_INFORMATION struct for 64 bit Windows - winternl.h only shows a few fields so this is defined here to reach CycleTime, WorkingSetSize, HandleCount etc, layout from geoffchappell.com docs
 	struct FULL_SYSTEM_PROCESS_INFORMATION {
 		ULONG          NextEntryOffset;
 		ULONG          NumberOfThreads;
@@ -36,7 +34,7 @@ namespace {
 		SIZE_T         WorkingSetSize;
 	};
 
-	//static_asserts to confirm layout correctness as it must match winternal actual struct layout
+	// confirms the layout above actually matches the real kernel struct, breaks the build loudly if it doesn't
 	static_assert(offsetof(FULL_SYSTEM_PROCESS_INFORMATION, CycleTime) == 0x18);
 	static_assert(offsetof(FULL_SYSTEM_PROCESS_INFORMATION, ImageName) == 0x38);
 	static_assert(offsetof(FULL_SYSTEM_PROCESS_INFORMATION, UniqueProcessId) == 0x50);
@@ -81,11 +79,10 @@ namespace pulsedb {
 				m_buffer.size(),
 				&bytes_returned
 			);
-			//if success yay
 			if (status == STATUS_SUCCESS) {
 				break;
 			}
-			//buffer might be too small and if the function returns the actual bytes needed then resize
+			// buffer might be too small, if the function returns the actual bytes needed then resize
 			if (status == STATUS_INFO_LENGTH_MISMATCH) {
 				if (bytes_returned != 0) {
 					m_buffer.resize(bytes_returned);
@@ -98,7 +95,7 @@ namespace pulsedb {
 			return false;
 		}
 
-		//setting a cursor to move through the data and read entries as SYSTEM_PROCESS_INFORMATION
+		// cursor walks the buffer, reading each entry as SYSTEM_PROCESS_INFORMATION
 		BYTE* cursor = m_buffer.data();
 		uint64_t total_cycles = 0;
 

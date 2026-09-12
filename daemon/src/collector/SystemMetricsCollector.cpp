@@ -5,9 +5,7 @@
 
 #include "SystemMetricsCollector.h"
 
-//this is the full SYSTEM_PERFORMANCE_INFORMATION for 64 bit Win
-//winternl.h only shows a few fields, minimal amount, so i have it defined here to access PageFaultCount, ContextSwitches + SystemCalls
-//order and offsets from geoffchappell.com docs.
+// full SYSTEM_PERFORMANCE_INFORMATION struct for 64 bit Windows - winternl.h only shows a few fields so this is defined here to reach PageFaultCount, ContextSwitches and SystemCalls, layout from geoffchappell.com docs
 namespace {
     struct FULL_SYSTEM_PERFORMANCE_INFORMATION {
         LARGE_INTEGER IdleProcessTime;
@@ -92,7 +90,6 @@ namespace {
 }
 
 namespace pulsedb {
-    // still returning the name 
 	std::string SystemMetricsCollector::name() const {
         return "system_metrics";
 	}
@@ -117,7 +114,7 @@ namespace pulsedb {
 		if (status != STATUS_SUCCESS) {
 			return false;
 		}
-        // initilizing previous values
+        // seeds previous values so collect() has something to delta against on the first real tick
         m_prev_context_switches = info.ContextSwitches;
         m_prev_system_calls = info.SystemCalls;
         m_prev_page_faults = info.PageFaultCount;
@@ -162,12 +159,12 @@ namespace pulsedb {
         uint32_t sc_delta = static_cast<uint32_t>(info.SystemCalls) - m_prev_system_calls;
         uint32_t pf_delta = static_cast<uint32_t>(info.PageFaultCount) - m_prev_page_faults;
 
-        //computing per second deltas, adding proper casting
+        // per-second rate for each counter, elapsed already accounts for tick drift
         m_context_switches_per_sec = static_cast<uint64_t>(cs_delta / elapsed);
         m_system_calls_per_sec = static_cast<uint64_t>(sc_delta / elapsed);
         m_page_faults_per_sec = static_cast<uint64_t>(pf_delta / elapsed);
 
-        // setting all values again but adding casting in fix
+        // cast back to uint32 to match the wrapping delta logic above on the next tick
         m_prev_context_switches = static_cast<uint32_t>(info.ContextSwitches);
         m_prev_system_calls = static_cast<uint32_t>(info.SystemCalls);
         m_prev_page_faults = static_cast<uint32_t>(info.PageFaultCount);
@@ -175,7 +172,7 @@ namespace pulsedb {
         return true;
     }
 
-    //storing values in snapshot
+    // copies the cached per-second rates into the shared snapshot
     void SystemMetricsCollector::fill_snapshot(MetricSnapshot& snap) const {
         snap.system_metrics.context_switches_per_sec = m_context_switches_per_sec;
         snap.system_metrics.system_calls_per_sec = m_system_calls_per_sec;
@@ -183,7 +180,6 @@ namespace pulsedb {
 
     }
 
-    //zeroing everything
     void SystemMetricsCollector::shutdown() {
         m_prev_context_switches = 0u;
         m_prev_system_calls = 0u;

@@ -4,7 +4,6 @@
 #include "PowerCollector.h"
 
 namespace pulsedb {
-	//still returning name 
 	std::string PowerCollector::name() const {
 		return "power";
 	}

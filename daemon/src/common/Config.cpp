@@ -21,8 +21,7 @@ namespace pulsedb {
     }
 
     
-    // pulls one field out of json into cfg, falls back to whatever default is already
-    // sitting in cfg if the key is missing or the wrong type, and warns either way
+    // pulls one field out of json into cfg, falls back to whatever default is already sitting in cfg if the key is missing or the wrong type, and warns either way
     template<typename T>
     static void read_field(const nlohmann::json& j, const std::string& key, T& out) {
         if (!j.contains(key)) {
