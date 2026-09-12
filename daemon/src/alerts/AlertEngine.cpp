@@ -1,6 +1,5 @@
 #include "AlertEngine.h"
 #include "MetricExtractor.h"
-#include "ToastNotifier.h"
 #include <iostream>
 #include <chrono>
 
@@ -143,7 +142,6 @@ namespace pulsedb {
         schedule_tick();
         m_thread = std::thread([this] {
             try {
-                winrt::init_apartment();
                 m_ioc.run();
             }
             catch (const std::exception& e) {
@@ -277,9 +275,6 @@ namespace pulsedb {
         state.peak_value = value;
 
         std::cout << "[ALERT] " << rule.name << " fired, value=" << value << "\n";
-
-        std::string body = rule.metric + " = " + std::to_string(value);
-        ToastNotifier::show("PulseDB Alert: " + rule.name, body);
     }
 
     void AlertEngine::resolve_alert(const AlertRule& rule, AlertRuntimeState& state) {

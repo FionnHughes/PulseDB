@@ -134,7 +134,7 @@ Each chunk decompresses to a 16-byte header plus `N x 10` bytes of readings
 - [ ] Config file (currently everything is hardcoded in `main.cpp`)
 - [ ] Full process list wired into a live query endpoint alongside top-25
 - [ ] Alert engine, threshold, sustained threshold, and rate of change
-      rules, evaluated on a timer, with Windows toast notifications
+      rules, evaluated on a timer
 - [ ] Desktop GUI (Tauri + React)
 - [ ] Windows service packaging
 

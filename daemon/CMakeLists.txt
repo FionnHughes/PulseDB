@@ -26,7 +26,6 @@
 
     "src/alerts/AlertEngine.cpp"
     "src/alerts/MetricExtractor.cpp"
-    "src/alerts/ToastNotifier.cpp"
 )
 
 target_compile_definitions(pulsedb_daemon PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00 NOMINMAX WIN32_LEAN_AND_MEAN)
@@ -41,5 +40,4 @@ target_link_libraries(pulsedb_daemon PRIVATE
     Drogon::Drogon
     pdh
     iphlpapi
-    windowsapp
 )

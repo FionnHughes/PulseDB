@@ -9,7 +9,6 @@
 #include <thread>
 #include <atomic>
 #include <json/json.h>
-#include <winrt/base.h>
 
 #include "AlertRule.h"
 #include "../queue/RingBuffer.h"
