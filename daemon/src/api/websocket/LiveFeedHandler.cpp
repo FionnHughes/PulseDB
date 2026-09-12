@@ -3,13 +3,13 @@
 #include <drogon/drogon.h>
 
 namespace pulsedb {
-    // client connected and  track it so broadcast_tick can reach it
+    // new client, track it so broadcast_tick can reach it
     void LiveFeedHandler::handleNewConnection(const drogon::HttpRequestPtr&, const drogon::WebSocketConnectionPtr& conn) {
         std::lock_guard<std::mutex> lock(s_mutex);
         s_connections.insert(conn);
     }
 
-    // client gone so stoping trying to send to it
+    // client gone, stop trying to send to it
     void LiveFeedHandler::handleConnectionClosed(const drogon::WebSocketConnectionPtr& conn) {
         std::lock_guard<std::mutex> lock(s_mutex);
         s_connections.erase(conn);

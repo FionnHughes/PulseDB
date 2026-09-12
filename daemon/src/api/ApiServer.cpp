@@ -11,11 +11,39 @@ namespace pulsedb {
         Json::Value j;
         j["ts"] = snap.timestamp_ms;
         j["cpu_total"] = snap.cpu_total_percent;
+
         Json::Value cores(Json::arrayValue);
         for (auto v : snap.cpu_per_core_percent) cores.append(v);
         j["cpu_cores"] = cores;
+
         j["ram_used_bytes"] = snap.ram_used_bytes;
         j["ram_available_bytes"] = snap.ram_available_bytes;
+        j["ram_total_bytes"] = snap.ram_total_bytes;
+
+        Json::Value disks(Json::arrayValue);
+        for (const auto& d : snap.disks) {
+            Json::Value dj;
+            dj["name"] = d.device_name;
+            dj["read_bps"] = static_cast<Json::UInt64>(d.read_bytes_per_sec);
+            dj["write_bps"] = static_cast<Json::UInt64>(d.write_bytes_per_sec);
+            dj["util_pct"] = d.utilization_percent;
+            dj["queue"] = static_cast<Json::UInt64>(d.queue_depth);
+            disks.append(dj);
+        }
+        j["disks"] = disks;
+
+        Json::Value network(Json::arrayValue);
+        for (const auto& n : snap.network_adapters) {
+            Json::Value nj;
+            nj["name"] = n.adapter_name;
+            nj["in_bps"] = static_cast<Json::UInt64>(n.bytes_in_per_sec);
+            nj["out_bps"] = static_cast<Json::UInt64>(n.bytes_out_per_sec);
+            nj["packets_in"] = static_cast<Json::UInt64>(n.packets_in_per_sec);
+            nj["packets_out"] = static_cast<Json::UInt64>(n.packets_out_per_sec);
+            network.append(nj);
+        }
+        j["network"] = network;
+
         j["pulsedb_pid"] = snap.pulsedb_pid;
         j["pulsedb_cpu_pct"] = snap.pulsedb_cpu_percent;
         j["pulsedb_ram_bytes"] = snap.pulsedb_ram_bytes;
@@ -66,7 +94,29 @@ namespace pulsedb {
         drogon::app().addListener("127.0.0.1", m_port);
         std::cout << "ApiServer: registering routes\n";
         register_routes();
-        register_alert_routes();   // <-- this line was missing
+        register_alert_routes();
+
+        // catches OPTIONS requests before drogon's router deals with them, because drogon was auto answering those with a limited method list on its own
+        drogon::app().registerPreRoutingAdvice(
+            [](const drogon::HttpRequestPtr& req, drogon::FilterCallback&& stop, drogon::FilterChainCallback&& pass) {
+                if (req->method() != drogon::Options) {
+                    pass();
+                    return;
+                }
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->addHeader("Access-Control-Allow-Origin", "*");
+                resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+                resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+                stop(resp);
+            });
+
+        // same headers but for actual real requests, not just the preflight ones
+        drogon::app().registerPostHandlingAdvice(
+            [](const drogon::HttpRequestPtr&, const drogon::HttpResponsePtr& resp) {
+                resp->addHeader("Access-Control-Allow-Origin", "*");
+                resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+                resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+            });
 
         drogon::app().setIntSignalHandler([this]() {
             if (m_shutdown_callback) m_shutdown_callback();
@@ -249,6 +299,34 @@ namespace pulsedb {
             },
             { drogon::Get }
         );
+
+        drogon::app().registerHandler(
+            "/api/processes/{1}/kill",
+            [this](const drogon::HttpRequestPtr& req,
+                std::function<void(const drogon::HttpResponsePtr&)>&& callback, uint32_t pid) {
+
+                    HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+                    Json::Value j;
+
+                    if (!h) {
+                        j["success"] = false;
+                        j["error"] = "could not open process, might need admin rights or it's protected";
+                        auto resp = drogon::HttpResponse::newHttpJsonResponse(j);
+                        resp->setStatusCode(drogon::k403Forbidden);
+                        callback(resp);
+                        return;
+                    }
+
+                    BOOL ok = TerminateProcess(h, 1);
+                    CloseHandle(h);
+
+                    j["success"] = ok != 0;
+                    auto resp = drogon::HttpResponse::newHttpJsonResponse(j);
+                    resp->setStatusCode(ok ? drogon::k200OK : drogon::k500InternalServerError);
+                    callback(resp);
+            },
+            { drogon::Post }
+        );
     }
 
     void ApiServer::register_alert_routes() {
@@ -309,6 +387,32 @@ namespace pulsedb {
                     callback(resp);
             }, { drogon::Delete });
 
+        drogon::app().registerHandler("/api/alerts/history/{1}",
+            [engine](const drogon::HttpRequestPtr& req,
+                std::function<void(const drogon::HttpResponsePtr&)>&& callback, int64_t id) {
+                    bool ok = engine->delete_history_entry(id);
+                    auto resp = drogon::HttpResponse::newHttpResponse();
+                    resp->setStatusCode(ok ? drogon::k200OK : drogon::k404NotFound);
+                    callback(resp);
+            }, { drogon::Delete });
+
+        drogon::app().registerHandler("/api/alerts/history",
+            [engine](const drogon::HttpRequestPtr& req,
+                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+                    auto older_than = req->getParameter("older_than_ms");
+                    if (older_than.empty()) {
+                        auto resp = drogon::HttpResponse::newHttpResponse();
+                        resp->setStatusCode(drogon::k400BadRequest);
+                        callback(resp);
+                        return;
+                    }
+                    int64_t cutoff = std::stoll(older_than);
+                    int deleted = engine->delete_history_older_than(cutoff);
+                    Json::Value j;
+                    j["deleted"] = deleted;
+                    callback(drogon::HttpResponse::newHttpJsonResponse(j));
+            }, { drogon::Delete });
+
         drogon::app().registerHandler("/api/alerts/history",
             [engine](const drogon::HttpRequestPtr& req,
                 std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
@@ -329,6 +433,14 @@ namespace pulsedb {
                         j["duration_seconds"] = static_cast<Json::Int64>(h.duration_seconds);
                         arr.append(j);
                     }
+                    callback(drogon::HttpResponse::newHttpJsonResponse(arr));
+            }, { drogon::Get });
+
+        drogon::app().registerHandler("/api/alerts/active",
+            [engine](const drogon::HttpRequestPtr& req,
+                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+                    Json::Value arr(Json::arrayValue);
+                    for (const auto& s : engine->get_active_states()) arr.append(s);
                     callback(drogon::HttpResponse::newHttpJsonResponse(arr));
             }, { drogon::Get });
     }

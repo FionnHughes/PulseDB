@@ -39,7 +39,10 @@ namespace pulsedb {
         int64_t add_rule(const AlertRule& rule);          // returns new id, -1 on fail
         bool update_rule(int64_t id, const AlertRule& rule);
         bool delete_rule(int64_t id);
+        bool delete_history_entry(int64_t id);
+        int delete_history_older_than(int64_t cutoff_ms);
         std::vector<AlertHistoryEntry> get_history(int limit, int offset, int64_t rule_id_filter);
+        std::vector<Json::Value> get_active_states();
 
     private:
         bool create_tables();

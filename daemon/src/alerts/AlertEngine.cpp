@@ -383,7 +383,17 @@ namespace pulsedb {
         sqlite3_bind_int64(stmt, 1, id);
         bool ok = sqlite3_step(stmt) == SQLITE_DONE;
         sqlite3_finalize(stmt);
+
         if (ok) {
+            // rule never happened, so its history shouldn't stick around either
+            const char* history_sql = "DELETE FROM alert_history WHERE rule_id=?;";
+            sqlite3_stmt* history_stmt = nullptr;
+            if (sqlite3_prepare_v2(m_db, history_sql, -1, &history_stmt, nullptr) == SQLITE_OK) {
+                sqlite3_bind_int64(history_stmt, 1, id);
+                sqlite3_step(history_stmt);
+                sqlite3_finalize(history_stmt);
+            }
+
             load_rules();
             std::lock_guard<std::mutex> lock(m_rules_mutex);
             m_runtime_states.erase(id);
@@ -417,6 +427,52 @@ namespace pulsedb {
         }
         sqlite3_finalize(stmt);
         return results;
+    }
+
+    bool AlertEngine::delete_history_entry(int64_t id) {
+        const char* sql = "DELETE FROM alert_history WHERE id=?;";
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) return false;
+        sqlite3_bind_int64(stmt, 1, id);
+        bool ok = sqlite3_step(stmt) == SQLITE_DONE;
+        sqlite3_finalize(stmt);
+        return ok;
+    }
+
+    // returns how many rows got wiped, so the gui can show a real count instead of just "done"
+    int AlertEngine::delete_history_older_than(int64_t cutoff_ms) {
+        const char* sql = "DELETE FROM alert_history WHERE triggered_at < ?;";
+        sqlite3_stmt* stmt = nullptr;
+        if (sqlite3_prepare_v2(m_db, sql, -1, &stmt, nullptr) != SQLITE_OK) return 0;
+        sqlite3_bind_int64(stmt, 1, cutoff_ms);
+        sqlite3_step(stmt);
+        int deleted = sqlite3_changes(m_db);
+        sqlite3_finalize(stmt);
+        return deleted;
+    }
+
+    // snapshot of any rule currently pending or active, for the gui to show live
+    std::vector<Json::Value> AlertEngine::get_active_states() {
+        std::vector<Json::Value> out;
+        std::lock_guard<std::mutex> lock(m_rules_mutex);
+
+        for (const auto& rule : m_rules) {
+            auto it = m_runtime_states.find(rule.id);
+            if (it == m_runtime_states.end()) continue;
+            const AlertRuntimeState& state = it->second;
+
+            // only pending or active are interesting here, inactive arent "currently firing"
+            if (state.state != AlertState::Pending && state.state != AlertState::Active) continue;
+
+            Json::Value j;
+            j["rule_id"] = static_cast<Json::Int64>(rule.id);
+            j["name"] = rule.name;
+            j["state"] = state.state == AlertState::Pending ? "pending" : "active";
+            j["peak_value"] = state.peak_value;
+            j["state_entered_at"] = static_cast<Json::Int64>(state.state_entered_at_ms);
+            out.push_back(j);
+        }
+        return out;
     }
 
     Json::Value rule_to_json(const AlertRule& r) {
