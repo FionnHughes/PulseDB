@@ -1,47 +1,79 @@
 # PulseDB
 
-A self-hosted system observability daemon for Windows. It watches your CPU,
-RAM, disk, network, and running processes every second, stores the history
-in a custom binary format, and serves it over a local REST API and a live
-WebSocket feed.
+A self-hosted system observability tool for Windows. It collects CPU, RAM,
+disk, network, and process metrics every second, stores the history in a
+custom binary format, and provides a desktop app plus a REST API for
+viewing live and historical data.
 
-There's no GUI yet as this is the backend. Query it with curl, a script, or
-build your own frontend against the API.
+## Contents
 
-## Status
-
-Collector, storage engine, and API/WebSocket layer are done and tested.
-No GUI, no alert engine, no config file yet so see "What's not here yet"
-below.
+- [Features](#features)
+- [Installation](#installation)
+- [Usage](#usage)
+- [API reference](#api-reference)
+- [Architecture](#architecture)
+- [Storage format](#storage-format)
+- [Data retention](#data-retention)
+- [Roadmap](#roadmap)
+- [Development notes](#development-notes)
+- [License](#license)
 
 ## Features
 
 - Collects CPU (per-core), RAM/swap, disk throughput per drive, network
-  throughput per adapter, and process info every second
-- Uses the lowest-level Windows API available per metric with no unnecessary
-  overhead
+  throughput per adapter, and full process info every second
 - Custom binary storage format (`.pulse`), LZ4-compressed, one file per
-  metric per day
-- Automatic downsampling into 1-minute and 1-hour summaries, with
-  configurable retention
-- Local REST API and a live WebSocket feed
-- Crash-safe writes via a per-metric write-ahead log
+  metric per day, with a write-ahead log for crash recovery
+- Automatic downsampling into 1-minute and 1-hour summaries in SQLite,
+  with configurable retention per resolution
+- Alert engine: threshold, sustained-threshold, and rate-of-change rules,
+  evaluated every 5 seconds, with a full history log
+- Desktop app (Tauri + React): live dashboard, process monitor
+  (filter/sort/kill), historical explorer with zoomable charts and a
+  point-in-time inspector, alert manager, and settings
+- Local REST API and live WebSocket feed for scripting or building your
+  own frontend against it
+- Exclusive lock on the data directory, so a second daemon instance can't
+  run against the same data and corrupt it
 
 ## Installation
 
-**If you just want to run it**
+Pick one: the installer if you want the full desktop app, or the daemon exe
+alone if you only want the API/CLI. You don't need both.
+
+**Option A: Windows installer (daemon + desktop app)**
+
+1. Download the latest `.exe` installer from the [Releases](../../releases) page
+2. Run it and follow the prompts
+3. Launch PulseDB from the Start Menu
+
+The installer sets up both the daemon and the desktop app together, no
+separate steps needed. Closing the window minimizes PulseDB to the system
+tray rather than quitting; right-click the tray icon to reopen the window
+or quit for real.
+
+**Option B: Daemon exe only (API/CLI, no desktop app)**
 
 1. Get the latest `pulsedb_daemon.exe` from the [Releases](../../releases) page
 2. Make sure the [Microsoft Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe)
-   is installed. Most Windows machines already have it. If the exe won't
-   launch, this is almost certainly why.
+   is installed (most Windows machines already have it)
 3. Run `pulsedb_daemon.exe`
 
-No installer, no extra dependencies to set up as it's a single executable.
+**Running the GUI from source (dev mode)**
 
-**Building from source**
+Only needed if you're developing the GUI itself, not for normal use.
+Requires Node.js and the Tauri CLI. From `gui/`:
 
-Needs CMake 3.25+, Conan 2, and Visual Studio (MSVC) on Windows.
+```
+npm install
+npm run tauri dev
+```
+
+The daemon must be running for the GUI to show data.
+
+**Build from source**
+
+Requires CMake 3.25+, Conan 2, and Visual Studio (MSVC).
 
 ```
 git clone https://github.com/FionnHughes/PulseDB.git
@@ -49,24 +81,21 @@ cd PulseDB
 conan install . --build=missing --output-folder=conan
 ```
 
-Then open the project in Visual Studio (or build via CMake directly) and
-build the `pulsedb_daemon` and `pulsedb_tests` targets. The daemon exe lands
-at `conan\daemon\Release\pulsedb_daemon.exe`, tests at
-`conan\daemon\Release\pulsedb_tests.exe`.
+Open in Visual Studio or build via CMake directly. Build the
+`pulsedb_daemon` and `pulsedb_tests` targets. The daemon binary lands at
+`conan\daemon\Release\pulsedb_daemon.exe`.
 
 ## Usage
 
-Run the daemon:
+Run the daemon and leave the window open. Ctrl+C shuts it down cleanly and
+flushes pending writes first.
 
 ```
 pulsedb_daemon.exe
 ```
 
 It starts collecting immediately and serves the API on
-`http://localhost:7700`. Leave the window open, Ctrl+C shuts it down
-cleanly, flushing any pending writes first.
-
-Query it from another terminal:
+`http://localhost:7700`.
 
 ```
 curl http://127.0.0.1:7700/api/status
@@ -78,32 +107,31 @@ curl "http://127.0.0.1:7700/api/query?metric=cpu_total&from=0&to=9999999999999"
 
 Base URL: `http://localhost:7700`
 
-| Endpoint | Description |
-|---|---|
-| `GET /api/status` | Daemon uptime and version |
-| `GET /api/metrics` | Names of all metrics currently being written |
-| `GET /api/latest` | Most recent snapshot, read from an in-memory ring buffer |
-| `GET /api/query?metric=X&from=T&to=T` | Raw historical readings between two Unix ms timestamps, with min/max/mean/p95 |
-| `GET /api/processes/latest` | Every running process, not just the top 25 |
-| `WS /ws/live` | Pushes one live snapshot per second to any connected client |
+| Endpoint                                                          | Description                                                    |
+| ----------------------------------------------------------------- | -------------------------------------------------------------- |
+| `GET /api/status`                                                 | Daemon uptime and version                                      |
+| `GET /api/metrics`                                                | Names of all metrics currently being written                   |
+| `GET /api/latest`                                                 | Most recent snapshot, from an in-memory ring buffer            |
+| `GET /api/query?metric=X&from=T&to=T&resolution=raw\|1min\|1hr`   | Historical readings, raw or downsampled, with min/max/mean/p95 |
+| `GET /api/processes/latest`                                       | Every running process                                          |
+| `POST /api/processes/{pid}/kill`                                  | Terminates a process                                           |
+| `GET/POST /api/alerts/rules`, `PUT/DELETE /api/alerts/rules/{id}` | Alert rule CRUD                                                |
+| `GET /api/alerts/active`                                          | Rules currently pending or firing                              |
+| `GET /api/alerts/history`, `DELETE /api/alerts/history/{id}`      | Alert history, with cleanup                                    |
+| `GET/PUT /api/config`                                             | Read or update the config file                                 |
+| `WS /ws/live`                                                     | Pushes one live snapshot per second                            |
 
 ## Architecture
 
-```
-Client (curl, script, future GUI)
-    |  HTTP REST + WebSocket (localhost:7700)
-Drogon API layer
-    |
-Collectors (WinAPI / NT / PDH) -> SPSC queue -> Storage engine (.pulse files)
-                                -> ring buffer (last 5 min, in memory)
-                                                  |
-                                          SQLite (1-min / 1-hr summaries)
-```
+- Desktop GUI (Tauri + React) talks to the Drogon API layer over HTTP REST and WebSocket on `localhost:7700`
+- Collectors (WinAPI / NT / PDH) push into an SPSC queue, which feeds both the storage engine (`.pulse` files) and an in-memory ring buffer (last 5 min)
+- SQLite holds the 1-min/1-hr summaries, alert rules and history, and config
+- The alert engine runs its own 5-second evaluation loop off the ring buffer
 
-Collectors use the lowest-level Windows API available per metric —
+Collectors use the lowest-level Windows API available per metric:
 `GetSystemTimes` and `NtQuerySystemInformation` for CPU, `GlobalMemoryStatusEx`
-for RAM, `GetIfTable2` for network, `GetSystemPowerStatus` for battery. PDH is
-used only for disk, since named per-drive enumeration is cleanest through it.
+for RAM, `GetIfTable2` for network, `GetSystemPowerStatus` for battery. PDH
+is used for disk, since named per-drive enumeration is cleanest through it.
 
 ## Storage format
 
@@ -123,40 +151,26 @@ Each chunk decompresses to a 16-byte header plus `N x 10` bytes of readings
 
 ## Data retention
 
-| Resolution | Storage | Default retention |
-|---|---|---|
-| Raw (1s) | `.pulse` files | 7 days |
-| 1-minute summaries | SQLite | 30 days |
-| 1-hour summaries | SQLite | 365 days |
+| Resolution         | Storage        | Default retention |
+| ------------------ | -------------- | ----------------- |
+| Raw (1s)           | `.pulse` files | 7 days            |
+| 1-minute summaries | SQLite         | 30 days           |
+| 1-hour summaries   | SQLite         | 365 days          |
+
+Configurable via `pulsedb.json` or the Settings screen in the GUI. Restart
+the daemon after changing.
 
 ## Roadmap
 
-- [ ] Config file (currently everything is hardcoded in `main.cpp`)
-- [ ] Full process list wired into a live query endpoint alongside top-25
-- [ ] Alert engine, threshold, sustained threshold, and rate of change
-      rules, evaluated on a timer
-- [ ] Desktop GUI (Tauri + React)
-- [ ] Windows service packaging
+- Linux support
+- Hand-rewritten frontend
 
-## What's not here yet
+## Development notes
 
-- No GUI. API-only right now.
-- No alert engine. It is designed but not implemented.
-- No config file. Collection interval, retention, and port are all hardcoded.
-- No API authentication. Only binds to 127.0.0.1 so don't expose it to a
-  network.
-- No Windows service packaging. It's a console app you run and leave open.
-- Admin rights are needed for the process collector to see every process,
-  not just your own.
+I built the backend (collectors, storage engine, alert engine) myself, with
+AI (Claude) helping out here and there along the way, mostly for debugging
+and troubleshooting. I leaned on it more for the GUI, since I mainly use
+PulseDB through the API/CLI myself and didn't want to spend my own time on a
+frontend I wouldn't use much.
 
-## Goals
 
-- Collector CPU overhead under 2%
-- 30 days of 1-second data under 500 MB on disk
-- 24-hour range query under 100ms
-- Live update latency under 500ms end to end
-- Stable for 30+ days without a restart
-
-## License
-
-Not yet decided.
