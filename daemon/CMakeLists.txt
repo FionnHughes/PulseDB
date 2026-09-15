@@ -42,7 +42,16 @@ set(PULSEDB_WINDOWS_COLLECTOR_TEST_SOURCES
     "tests/collector/SystemMetricsAndPowerCollectorTest.cpp"
 )
 
-# pulsedb_tests, builds on both platforms
+set(PULSEDB_LINUX_COLLECTOR_SOURCES
+    "src/collector/linux/CpuCollector.cpp"
+)
+
+# empty for now -- fill in as Linux collector test files get written
+set(PULSEDB_LINUX_COLLECTOR_TEST_SOURCES
+    "tests/collector/linux/CpuCollectorTest.cpp"
+)
+
+# --- pulsedb_tests: builds on both platforms ---
 
 set(PULSEDB_TESTS_SOURCES
     ${PULSEDB_COMMON_SOURCES}
@@ -54,6 +63,11 @@ if (WIN32)
         ${PULSEDB_WINDOWS_COLLECTOR_SOURCES}
         ${PULSEDB_WINDOWS_COLLECTOR_TEST_SOURCES}
     )
+else()
+    list(APPEND PULSEDB_TESTS_SOURCES
+        ${PULSEDB_LINUX_COLLECTOR_SOURCES}
+        ${PULSEDB_LINUX_COLLECTOR_TEST_SOURCES}
+    )
 endif()
 
 add_executable(pulsedb_tests ${PULSEDB_TESTS_SOURCES})
@@ -64,6 +78,16 @@ endif()
 
 set_property(TARGET pulsedb_tests PROPERTY CXX_STANDARD 20)
 target_include_directories(pulsedb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# platform-specific collector header lives in its own subfolder so a bare
+# #include "CpuCollector.h" resolves to the right one without callers
+# needing to know which platform they're on
+if (WIN32)
+    target_include_directories(pulsedb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/collector)
+else()
+    target_include_directories(pulsedb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/collector/linux)
+endif()
+
 target_link_libraries(pulsedb_tests PRIVATE
     GTest::gtest
     GTest::gtest_main
@@ -84,7 +108,9 @@ endif()
 include(GoogleTest)
 gtest_discover_tests(pulsedb_tests)
 
-# pulsedb_daemon
+# --- pulsedb_daemon: Windows-only until the collector layer has a Linux (/proc) implementation ---
+# main.cpp itself includes <windows.h> and wires CollectorScheduler unconditionally, so there's
+# no partial build here worth attempting yet -- the whole target is deferred.
 
 if (WIN32)
     add_executable(pulsedb_daemon
@@ -105,6 +131,7 @@ if (WIN32)
     target_compile_definitions(pulsedb_daemon PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00 NOMINMAX WIN32_LEAN_AND_MEAN)
     set_property(TARGET pulsedb_daemon PROPERTY CXX_STANDARD 20)
     target_include_directories(pulsedb_daemon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_include_directories(pulsedb_daemon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/collector)
     target_link_libraries(pulsedb_daemon PRIVATE
         boost::boost
         LZ4::lz4_static

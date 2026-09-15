@@ -31,3 +31,4 @@ ipch/
 Browse.VC.db
 *.VC.db
 *.VC.opendb
+compile_commands.json
