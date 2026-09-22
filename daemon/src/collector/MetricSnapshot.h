@@ -32,6 +32,7 @@ namespace pulsedb {
         uint64_t ram_available_bytes{ 0 };
         uint64_t swap_total_bytes{ 0 };
         uint64_t swap_used_bytes{ 0 };
+        uint64_t page_cache_bytes{ 0 }; // Linux only, buffers + cached (reclaimable file cache). Always 0 on Windows
 
         uint32_t pulsedb_pid{ 0 };
         float pulsedb_cpu_percent{ 0.0f };

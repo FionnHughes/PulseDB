@@ -44,14 +44,14 @@ set(PULSEDB_WINDOWS_COLLECTOR_TEST_SOURCES
 
 set(PULSEDB_LINUX_COLLECTOR_SOURCES
     "src/collector/linux/CpuCollector.cpp"
+    "src/collector/linux/RamCollector.cpp"
 )
 
-# empty for now -- fill in as Linux collector test files get written
+# empty for now will fill in as Linux collector test files get written
 set(PULSEDB_LINUX_COLLECTOR_TEST_SOURCES
     "tests/collector/linux/CpuCollectorTest.cpp"
 )
 
-# --- pulsedb_tests: builds on both platforms ---
 
 set(PULSEDB_TESTS_SOURCES
     ${PULSEDB_COMMON_SOURCES}
@@ -79,9 +79,6 @@ endif()
 set_property(TARGET pulsedb_tests PROPERTY CXX_STANDARD 20)
 target_include_directories(pulsedb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
-# platform-specific collector header lives in its own subfolder so a bare
-# #include "CpuCollector.h" resolves to the right one without callers
-# needing to know which platform they're on
 if (WIN32)
     target_include_directories(pulsedb_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/collector)
 else()
@@ -108,9 +105,7 @@ endif()
 include(GoogleTest)
 gtest_discover_tests(pulsedb_tests)
 
-# --- pulsedb_daemon: Windows-only until the collector layer has a Linux (/proc) implementation ---
-# main.cpp itself includes <windows.h> and wires CollectorScheduler unconditionally, so there's
-# no partial build here worth attempting yet -- the whole target is deferred.
+# Windows only for now
 
 if (WIN32)
     add_executable(pulsedb_daemon
