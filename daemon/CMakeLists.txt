@@ -50,6 +50,7 @@ set(PULSEDB_LINUX_COLLECTOR_SOURCES
 # empty for now will fill in as Linux collector test files get written
 set(PULSEDB_LINUX_COLLECTOR_TEST_SOURCES
     "tests/collector/linux/CpuCollectorTest.cpp"
+    "tests/collector/linux/RamCollectorTest.cpp"
 )
 
 
