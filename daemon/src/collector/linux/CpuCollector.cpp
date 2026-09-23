@@ -8,6 +8,7 @@
 
 #include "../MetricSnapshot.h"
 #include "CpuCollector.h"
+#include "common/Utils.h"
 
 namespace pulsedb {
 
@@ -72,13 +73,6 @@ namespace pulsedb {
         uint64_t total_delta = delta_user + delta_nice + delta_system + delta_idle + delta_iowait + delta_irq +
                                delta_softirq + delta_steal;
         return total_delta;
-    }
-
-    float CpuCollector::compute_percent(uint64_t part_delta, uint64_t total_delta) {
-        if (total_delta == 0) {
-            return 0.0f;
-        }
-        return (static_cast<float>(part_delta) / static_cast<float>(total_delta)) * 100.0f;
     }
 
     // gets the core count, sizes all the vectors, seeds the previous tick

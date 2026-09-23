@@ -45,6 +45,8 @@ namespace pulsedb {
             uint64_t write_bytes_per_sec{ 0 };
             float utilization_percent{ 0.0f };
             uint64_t queue_depth{ 0 };
+            uint64_t discards_per_sec{ 0 };
+            uint64_t discard_bytes_per_sec{ 0 };
         };
 
         // per adapter metrics

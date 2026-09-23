@@ -45,6 +45,7 @@ set(PULSEDB_WINDOWS_COLLECTOR_TEST_SOURCES
 set(PULSEDB_LINUX_COLLECTOR_SOURCES
     "src/collector/linux/CpuCollector.cpp"
     "src/collector/linux/RamCollector.cpp"
+    "src/collector/linux/DiskCollector.cpp"
 )
 
 # empty for now will fill in as Linux collector test files get written

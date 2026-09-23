@@ -55,7 +55,6 @@ namespace pulsedb {
 
         std::optional<CpuCollector::LinuxCpu> read_proc_stat(FILE* file) const;
         static uint64_t compute_total_delta(const LinuxCpuTimes& prev, const LinuxCpuTimes& curr);
-        static float compute_percent(uint64_t part_delta, uint64_t total_delta);
 
         float m_cpu_total_percent{ 0.0f };
         float m_cpu_iowait_percent{ 0.0f };
