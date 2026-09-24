@@ -2,7 +2,6 @@
 #include <string>
 
 #include "NetworkCollector.h"
-#include "common/Utils.h"
 
 namespace pulsedb {
     NetworkCollector::NetworkCollector(std::string net_dev_path) : m_net_dev_path(std::move(net_dev_path)) {}

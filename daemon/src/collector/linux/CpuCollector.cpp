@@ -8,7 +8,7 @@
 
 #include "../MetricSnapshot.h"
 #include "CpuCollector.h"
-#include "common/Utils.h"
+#include "common/linux/Utils.h"
 
 namespace pulsedb {
 
@@ -26,12 +26,9 @@ namespace pulsedb {
             if (strncmp(line, "cpu", 3) == 0) {
                 // if aggregated cpu data
                 if (strncmp(line, "cpu ", 4) == 0) {
-                    if (sscanf(line,
-                               "cpu %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64
-                               " %" SCNu64 " %" SCNu64 " %" SCNu64,
-                               &times.total.user, &times.total.nice, &times.total.system, &times.total.idle,
-                               &times.total.iowait, &times.total.irq, &times.total.softirq, &times.total.steal,
-                               &times.total.guest, &times.total.guest_nice) < 5) {
+                    if (sscanf(line, "cpu %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64,
+                               &times.total.user, &times.total.nice, &times.total.system, &times.total.idle, &times.total.iowait, &times.total.irq,
+                               &times.total.softirq, &times.total.steal, &times.total.guest, &times.total.guest_nice) < 5) {
                         // proc/stats can have less than 10 values if its a legacy system etc but that isnt an issue
                         // unless we only return so few which indicates theres an issue somewhere which is why we check
                         return std::nullopt;
@@ -41,11 +38,9 @@ namespace pulsedb {
                     int idx;
                     LinuxCpuTimes core_times{};
                     if (sscanf(line,
-                               "cpu%d %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64
-                               " %" SCNu64 " %" SCNu64 " %" SCNu64,
-                               &idx, &core_times.user, &core_times.nice, &core_times.system, &core_times.idle,
-                               &core_times.iowait, &core_times.irq, &core_times.softirq, &core_times.steal,
-                               &core_times.guest, &core_times.guest_nice) < 5) {
+                               "cpu%d %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64 " %" SCNu64,
+                               &idx, &core_times.user, &core_times.nice, &core_times.system, &core_times.idle, &core_times.iowait, &core_times.irq,
+                               &core_times.softirq, &core_times.steal, &core_times.guest, &core_times.guest_nice) < 5) {
                         return std::nullopt;
                     }
                     // defensive check against idx returned and cores already collected
@@ -70,8 +65,7 @@ namespace pulsedb {
         uint64_t delta_softirq = curr.softirq - prev.softirq;
         uint64_t delta_steal = curr.steal - prev.steal;
 
-        uint64_t total_delta = delta_user + delta_nice + delta_system + delta_idle + delta_iowait + delta_irq +
-                               delta_softirq + delta_steal;
+        uint64_t total_delta = delta_user + delta_nice + delta_system + delta_idle + delta_iowait + delta_irq + delta_softirq + delta_steal;
         return total_delta;
     }
 
@@ -121,8 +115,7 @@ namespace pulsedb {
         }
 
         uint64_t total_delta = compute_total_delta(m_prev_cpu->total, cpu->total);
-        uint64_t busy_delta =
-            total_delta - (cpu->total.idle - m_prev_cpu->total.idle) - (cpu->total.iowait - m_prev_cpu->total.iowait);
+        uint64_t busy_delta = total_delta - (cpu->total.idle - m_prev_cpu->total.idle) - (cpu->total.iowait - m_prev_cpu->total.iowait);
 
         uint64_t iowait_delta = cpu->total.iowait - m_prev_cpu->total.iowait;
         uint64_t steal_delta = cpu->total.steal - m_prev_cpu->total.steal;
@@ -134,8 +127,8 @@ namespace pulsedb {
         for (int i = 0; i < m_core_count; i++) {
             uint64_t core_total_delta = compute_total_delta(m_prev_cpu->per_core[i], cpu->per_core[i]);
 
-            uint64_t core_busy_delta = core_total_delta - (cpu->per_core[i].idle - m_prev_cpu->per_core[i].idle) -
-                                       (cpu->per_core[i].iowait - m_prev_cpu->per_core[i].iowait);
+            uint64_t core_busy_delta =
+                core_total_delta - (cpu->per_core[i].idle - m_prev_cpu->per_core[i].idle) - (cpu->per_core[i].iowait - m_prev_cpu->per_core[i].iowait);
             m_per_core_percent[i] = compute_percent(core_busy_delta, core_total_delta);
         }
         m_prev_cpu = std::move(cpu);

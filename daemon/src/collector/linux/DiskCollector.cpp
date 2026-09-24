@@ -2,7 +2,7 @@
 #include <string>
 
 #include "DiskCollector.h"
-#include "common/Utils.h"
+#include "common/linux/Utils.h"
 
 namespace pulsedb {
     DiskCollector::DiskCollector(std::string diskstats_path) : m_diskstats_path(std::move(diskstats_path)) {}
