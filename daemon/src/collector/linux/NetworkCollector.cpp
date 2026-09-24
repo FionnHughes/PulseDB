@@ -22,7 +22,8 @@ namespace pulsedb {
                        " %" SCNu64 " %" SCNu64 " %*" SCNu64 " %*" SCNu64 " %*" SCNu64 " %*" SCNu64,
                        name_buf, &reading.rx_bytes, &reading.rx_packets, &reading.rx_errors, &reading.rx_dropped, &reading.tx_bytes, &reading.tx_packets,
                        &reading.tx_errors, &reading.tx_dropped) != 9) {
-                return std::nullopt;
+                // continuing not breaking because if it fails it most likely the header
+                continue;
             }
             std::string name = name_buf;
             if (!name.empty() && name.back() == ':') {
