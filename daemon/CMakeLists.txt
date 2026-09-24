@@ -52,6 +52,7 @@ set(PULSEDB_LINUX_COLLECTOR_SOURCES
 set(PULSEDB_LINUX_COLLECTOR_TEST_SOURCES
     "tests/collector/linux/CpuCollectorTest.cpp"
     "tests/collector/linux/RamCollectorTest.cpp"
+    "tests/collector/linux/DiskCollectorTest.cpp"
 )
 
 
