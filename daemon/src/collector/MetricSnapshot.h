@@ -56,6 +56,10 @@ namespace pulsedb {
             uint64_t bytes_out_per_sec{ 0 };
             uint64_t packets_in_per_sec{ 0 };
             uint64_t packets_out_per_sec{ 0 };
+            uint64_t rx_dropped_per_sec{ 0 }; // Linux-only, always 0 on Windows
+            uint64_t tx_dropped_per_sec{ 0 }; // Linux-only, always 0 on Windows
+            uint64_t rx_errors_per_sec{ 0 };  // Linux-only, always 0 on Windows
+            uint64_t tx_errors_per_sec{ 0 };  // Linux-only, always 0 on Windows
         };
 
         // per process stats but only the top 25 by CPU usage end up in the
