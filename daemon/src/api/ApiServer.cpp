@@ -2,6 +2,7 @@
 
 #include "websocket/LiveFeedHandler.h"
 #include "storage/Downsampler.h"
+#include "common/Utils.h"
 #include "ApiServer.h"
 
 namespace pulsedb {
@@ -141,7 +142,7 @@ namespace pulsedb {
 
                 auto elapsed = std::chrono::steady_clock::now() - m_start_time;
                 j["uptime_seconds"] = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
-                j["version"] = "0.1.0"; // hardcoded for now
+                j["version"] = PULSEDB_VERSION;
 
                 auto response = drogon::HttpResponse::newHttpJsonResponse(j);
                 callback(response);
