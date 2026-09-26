@@ -9,6 +9,15 @@
 #include "common/Utils.h"
 
 namespace pulsedb {
+	namespace {
+		// only real Networks, this is to skip loopback, tunnels and virtual adapters, which are unnecessary
+		bool should_skip(const MIB_IF_ROW2& row) {
+			return row.Type == IF_TYPE_SOFTWARE_LOOPBACK
+				|| row.Type == IF_TYPE_TUNNEL
+				|| row.InterfaceAndOperStatusFlags.FilterInterface
+				|| !row.InterfaceAndOperStatusFlags.HardwareInterface;
+		}
+	}
 	// returns name just in case i forget this obscure function
 	std::string NetworkCollector::name() const {
 		return "network";
@@ -37,7 +46,7 @@ namespace pulsedb {
 		// seeds m_prev for every physical adapter so the first real collect() has deltas to compare against
 		for (ULONG i = 0; i < table->NumEntries; i++) {
 			const auto& row = table->Table[i];
-			if (row.Type == IF_TYPE_SOFTWARE_LOOPBACK || row.Type == IF_TYPE_TUNNEL) {
+			if (should_skip(row)) {
 				continue;
 			}
 			PrevCounters counter {
@@ -77,7 +86,7 @@ namespace pulsedb {
 
 		for (ULONG i = 0; i < table->NumEntries; i++) {
 			const auto& row = table->Table[i];
-			if (row.Type == IF_TYPE_SOFTWARE_LOOPBACK || row.Type == IF_TYPE_TUNNEL) {
+			if (should_skip(row)) {
 				continue;
 			}
 			uint64_t luid = row.InterfaceLuid.Value;

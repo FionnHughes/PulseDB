@@ -96,6 +96,7 @@ namespace pulsedb {
     void ApiServer::run() {
         std::cout << "ApiServer: adding listener on port " << m_port << "\n";
         drogon::app().addListener("127.0.0.1", m_port);
+        drogon::app().addListener("::1", m_port);
         std::cout << "ApiServer: registering routes\n";
         register_routes();
         register_alert_routes();
