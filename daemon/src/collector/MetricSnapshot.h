@@ -80,6 +80,15 @@ namespace pulsedb {
             uint64_t context_switches_per_sec{ 0 };
             uint64_t system_calls_per_sec{ 0 };
             uint64_t page_faults_per_sec{ 0 };
+
+            // linux only, stay 0 on windows
+            uint64_t forks_per_sec{ 0 };
+            uint64_t major_page_faults_per_sec{ 0 };
+            uint64_t swap_in_bytes_per_sec{ 0 };
+            uint64_t swap_out_bytes_per_sec{ 0 };
+            uint32_t procs_running{ 0 };
+            uint32_t procs_blocked{ 0 };
+            uint64_t oom_kills_total{ 0 };
         };
 
         // battery and AC power status
