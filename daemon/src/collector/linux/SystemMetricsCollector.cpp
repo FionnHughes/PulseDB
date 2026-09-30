@@ -3,10 +3,12 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <fcntl.h>
 #include <unistd.h>
 #include <utility>
 
 #include "SystemMetricsCollector.h"
+#include "common/linux/Utils.h"
 
 namespace pulsedb {
 
@@ -18,40 +20,50 @@ namespace pulsedb {
     std::string SystemMetricsCollector::name() const { return "system_metrics"; }
 
     bool SystemMetricsCollector::read_proc_stat(LinuxSystemCounters& out) {
-        if (!m_file_handle_stat) {
+        if (m_fd_stat < 0) {
             return false;
         }
-        std::rewind(m_file_handle_stat);
-        char line[4096];
+
+        ssize_t n = read_whole_file(m_fd_stat, m_buf);
+        if (n < 0) {
+            return false;
+        }
+        char* line = m_buf.data();
+        char* buf_end = line + n;
+
         int found = 0;
 
-        while (fgets(line, sizeof(line), m_file_handle_stat)) {
+        while (line < buf_end) {
+            // I'm spliting buffer into lines manually, line jumps to the next one before matching
+            char* nl = static_cast<char*>(std::memchr(line, '\n', buf_end - line));
+            char* cur = line;
+            line = nl ? nl + 1 : buf_end;
             // filtering for lines we want
-            if (strncmp(line, "ctxt ", 5) == 0) {
+            if (strncmp(cur, "ctxt ", 5) == 0) {
                 char* end = nullptr;
-                out.ctxt = std::strtoull(line + 5, &end, 10);
-                if (end == line + 5)
+                out.ctxt = std::strtoull(cur + 5, &end, 10);
+                if (end == cur + 5)
                     continue;
                 found++;
             }
-            else if (strncmp(line, "processes ", 10) == 0) {
+            else if (strncmp(cur, "processes ", 10) == 0) {
                 char* end = nullptr;
-                out.forks = std::strtoull(line + 10, &end, 10);
-                if (end == line + 10)
+                out.forks = std::strtoull(cur + 10, &end, 10);
+                if (end == cur + 10)
                     continue;
                 found++;
             }
-            else if (strncmp(line, "procs_running ", 14) == 0) {
+            else if (strncmp(cur, "procs_running ", 14) == 0) {
                 char* end = nullptr;
-                out.procs_running = static_cast<uint32_t>(std::strtoull(line + 14, &end, 10));
-                if (end == line + 14)
+                out.procs_running = static_cast<uint32_t>(std::strtoull(cur + 14, &end, 10));
+                if (end == cur + 14)
                     continue;
                 found++;
             }
-            else if (strncmp(line, "procs_blocked ", 14) == 0) {
+            else if (strncmp(cur, "procs_blocked ", 14) == 0) {
                 char* end = nullptr;
-                out.procs_blocked = static_cast<uint32_t>(std::strtoull(line + 14, &end, 10));
-                if (end == line + 14)
+                out.procs_blocked = static_cast<uint32_t>(std::strtoull(cur + 14, &end, 10));
+                if (end == cur + 14)
                     continue;
                 found++;
             }
@@ -63,52 +75,62 @@ namespace pulsedb {
     }
 
     bool SystemMetricsCollector::read_proc_vmstat(LinuxSystemCounters& out) {
-        if (!m_file_handle_vmstat) {
+        if (m_fd_vmstat < 0) {
             return false;
         }
-        std::rewind(m_file_handle_vmstat);
-        char line[128];
+
+        ssize_t n = read_whole_file(m_fd_vmstat, m_buf);
+        if (n < 0) {
+            return false;
+        }
+        char* line = m_buf.data();
+        char* buf_end = line + n;
+
         int mandatory_found = 0;
         bool oom_found = false;
 
-        while (fgets(line, sizeof(line), m_file_handle_vmstat)) {
+        while (line < buf_end) {
+            // I'm spliting buffer into lines manually, line jumps to the next one before matching
+            char* nl = static_cast<char*>(std::memchr(line, '\n', buf_end - line));
+            char* cur = line;
+            line = nl ? nl + 1 : buf_end;
             // filtering for lines we want, we only want thing beginning with 'p' or 'o' easy check
-            if (line[0] != 'p' && line[0] != 'o')
+            if (cur[0] != 'p' && cur[0] != 'o')
                 continue;
 
             // finer filtering
-            if (strncmp(line, "pgfault ", 8) == 0) {
+            if (strncmp(cur, "pgfault ", 8) == 0) {
                 char* end = nullptr;
-                out.pgfault = std::strtoull(line + 8, &end, 10);
-                if (end == line + 8)
+                out.pgfault = std::strtoull(cur + 8, &end, 10);
+                if (end == cur + 8)
                     continue;
                 mandatory_found++;
             }
-            else if (strncmp(line, "pgmajfault ", 11) == 0) {
+            else if (strncmp(cur, "pgmajfault ", 11) == 0) {
                 char* end = nullptr;
-                out.pgmajfault = std::strtoull(line + 11, &end, 10);
-                if (end == line + 11)
+                out.pgmajfault = std::strtoull(cur + 11, &end, 10);
+                if (end == cur + 11)
                     continue;
                 mandatory_found++;
             }
-            else if (strncmp(line, "pswpin ", 7) == 0) {
+            else if (strncmp(cur, "pswpin ", 7) == 0) {
                 char* end = nullptr;
-                out.pswpin = std::strtoull(line + 7, &end, 10);
-                if (end == line + 7)
+                out.pswpin = std::strtoull(cur + 7, &end, 10);
+                if (end == cur + 7)
                     continue;
                 mandatory_found++;
             }
-            else if (strncmp(line, "pswpout ", 8) == 0) {
+            else if (strncmp(cur, "pswpout ", 8) == 0) {
                 char* end = nullptr;
-                out.pswpout = std::strtoull(line + 8, &end, 10);
-                if (end == line + 8)
+                out.pswpout = std::strtoull(cur + 8, &end, 10);
+                if (end == cur + 8)
                     continue;
                 mandatory_found++;
             }
-            else if (strncmp(line, "oom_kill ", 9) == 0) {
+            else if (strncmp(cur, "oom_kill ", 9) == 0) {
                 char* end = nullptr;
-                out.oom_kill = std::strtoull(line + 9, &end, 10);
-                if (end == line + 9)
+                out.oom_kill = std::strtoull(cur + 9, &end, 10);
+                if (end == cur + 9)
                     continue;
                 oom_found = true;
             }
@@ -129,11 +151,13 @@ namespace pulsedb {
         }
         m_page_size = static_cast<uint64_t>(page_size);
 
-        // this time tracking two files
-        m_file_handle_stat = std::fopen(m_stat_path.c_str(), "r");
-        m_file_handle_vmstat = std::fopen(m_vmstat_path.c_str(), "r");
+        m_buf.resize(16384);
 
-        if (!m_file_handle_stat || !m_file_handle_vmstat) {
+        // this time tracking two files
+        m_fd_stat = open(m_stat_path.c_str(), O_RDONLY | O_CLOEXEC);
+        m_fd_vmstat = open(m_vmstat_path.c_str(), O_RDONLY | O_CLOEXEC);
+
+        if (m_fd_stat < 0 || m_fd_vmstat < 0) {
             m_degraded = true;
             shutdown();
             return false;
@@ -187,13 +211,13 @@ namespace pulsedb {
     void SystemMetricsCollector::fill_snapshot(MetricSnapshot& snap) const { snap.system_metrics = m_current; }
 
     void SystemMetricsCollector::shutdown() {
-        if (m_file_handle_stat) {
-            std::fclose(m_file_handle_stat);
-            m_file_handle_stat = nullptr;
+        if (m_fd_stat >= 0) {
+            close(m_fd_stat);
+            m_fd_stat = -1;
         }
-        if (m_file_handle_vmstat) {
-            std::fclose(m_file_handle_vmstat);
-            m_file_handle_vmstat = nullptr;
+        if (m_fd_vmstat >= 0) {
+            close(m_fd_vmstat);
+            m_fd_vmstat = -1;
         }
     }
 } // namespace pulsedb

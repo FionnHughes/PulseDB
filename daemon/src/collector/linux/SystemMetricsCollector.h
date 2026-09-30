@@ -2,8 +2,8 @@
 
 #include <chrono>
 #include <cstdint>
-#include <cstdio>
 #include <string>
+#include <vector>
 
 #include "../IMetricCollector.h"
 #include "../MetricSnapshot.h"
@@ -51,8 +51,10 @@ namespace pulsedb {
         bool read_proc_stat(LinuxSystemCounters& out);
         bool read_proc_vmstat(LinuxSystemCounters& out);
 
-        FILE* m_file_handle_stat{ nullptr };
-        FILE* m_file_handle_vmstat{ nullptr };
+        // using pread not FILE* here, stdio's buffer goes stale on rewind when we break before EOF, bug fixed with pread
+        int m_fd_stat{ -1 };
+        int m_fd_vmstat{ -1 };
+        std::vector<char> m_buf; // buffer shared by both files
 
         MetricSnapshot::SystemMetrics m_current;
 

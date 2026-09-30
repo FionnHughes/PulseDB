@@ -1,8 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <cstdio>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -51,9 +49,10 @@ namespace pulsedb {
         int m_core_count{ 0 };
 
         // previous tick values for total CPU calculation
-        std::optional<LinuxCpu> m_prev_cpu;
+        LinuxCpu m_prev_cpu;
+        LinuxCpu m_cur_cpu;
 
-        std::optional<CpuCollector::LinuxCpu> read_proc_stat(FILE* file) const;
+        bool read_proc_stat(LinuxCpu& out);
         static uint64_t compute_total_delta(const LinuxCpuTimes& prev, const LinuxCpuTimes& curr);
 
         float m_cpu_total_percent{ 0.0f };
@@ -64,7 +63,9 @@ namespace pulsedb {
         // will be empty for now as the timings are very variable by miliseconds
         std::vector<float> m_per_core_freq_mhz;
 
-        FILE* m_file_handle{ nullptr };
+        // using pread not FILE* here, stdio's buffer goes stale on rewind when we break before EOF, bug fixed with pread
+        std::vector<char> m_buf;
+        int m_fd{ -1 };
 
         // set to true if init or collection fails, if collect() returns false and then stop trying
         bool m_degraded{ false };
