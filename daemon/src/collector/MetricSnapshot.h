@@ -98,6 +98,11 @@ namespace pulsedb {
             uint8_t battery_percent{ 0 };
             int32_t battery_seconds_remaining{ -1 };
             int32_t battery_full_seconds_remaining{ -1 };
+
+            // linux only
+            float battery_power_watts{ 0.0f };
+            float battery_health_percent{ 0.0f };
+            uint32_t battery_cycle_count{ 0 };
         };
 
         std::vector<DiskStats> disks;

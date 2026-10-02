@@ -48,6 +48,7 @@ set(PULSEDB_LINUX_COLLECTOR_SOURCES
     "src/collector/linux/DiskCollector.cpp"
     "src/collector/linux/NetworkCollector.cpp"
     "src/collector/linux/SystemMetricsCollector.cpp"
+    "src/collector/linux/PowerCollector.cpp"
 )
 
 set(PULSEDB_LINUX_COLLECTOR_TEST_SOURCES
