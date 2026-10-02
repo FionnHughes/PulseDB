@@ -14,9 +14,11 @@
 
 #include "ApiServer.h"
 #include "storage/Downsampler.h"
-#include "common/Utils.h"
 #include "websocket/LiveFeedHandler.h"
 namespace pulsedb {
+    // version reported by /api/status
+    constexpr const char* PULSEDB_VERSION = "1.0.0";
+
     // converts a MetricSnapshot into the JSON text, not using json tree anymore, this is much more efficient to do every tick
     void snapshot_to_json(const MetricSnapshot& snap, rapidjson::StringBuffer& out) {
         rapidjson::Writer<rapidjson::StringBuffer> w(out);
@@ -217,7 +219,7 @@ namespace pulsedb {
     void ApiServer::run() {
         std::cout << "ApiServer: adding listener on port " << m_port << "\n";
         drogon::app().addListener("127.0.0.1", m_port);
-		drogon::app().addListener("::1", m_port);
+        drogon::app().addListener("::1", m_port);
         std::cout << "ApiServer: registering routes\n";
         register_routes();
         register_alert_routes();
