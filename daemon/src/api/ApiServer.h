@@ -4,6 +4,8 @@
 #include <cstdint>
 #include <functional>
 #include <json/json.h>
+#include <rapidjson/stringbuffer.h>
+#include <string>
 #include <thread>
 
 #include "../alerts/AlertEngine.h"
@@ -15,7 +17,7 @@
 
 namespace pulsedb {
 
-    Json::Value snapshot_to_json(const MetricSnapshot& snap);
+    void snapshot_to_json(const MetricSnapshot& snap, rapidjson::StringBuffer& out);
 
     class ApiServer {
     public:

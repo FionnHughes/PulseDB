@@ -20,5 +20,6 @@ find_package(SQLite3 REQUIRED)
 find_package(GTest REQUIRED)
 find_package(xxHash REQUIRED)
 find_package(Drogon REQUIRED)
+find_package(RapidJSON REQUIRED)
 
 add_subdirectory ("daemon")

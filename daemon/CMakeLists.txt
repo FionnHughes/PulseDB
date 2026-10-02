@@ -162,6 +162,7 @@ target_link_libraries(pulsedb_daemon PRIVATE
     SQLite::SQLite3
     xxHash::xxhash
     Drogon::Drogon
+    rapidjson
 )
 
 if (WIN32)
