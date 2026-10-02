@@ -1,11 +1,14 @@
 #pragma once
-#include <string>
 #include <cstdint>
+#include <string>
 
 namespace pulsedb {
+    std::string default_config_path();
+    std::string default_data_dir();
+
     struct Config {
         uint16_t api_port = 7700;
-        std::string data_directory = "C:/ProgramData/PulseDB/data";
+        std::string data_directory = default_data_dir();
         int collection_interval_ms = 1000;
 
         int retention_raw_days = 7;
@@ -17,4 +20,4 @@ namespace pulsedb {
     Config load_config();
     // writes cfg to the same fixed path load_config() reads from
     bool save_config(const Config& cfg);
-}
+} // namespace pulsedb

@@ -1,4 +1,8 @@
-﻿set(PULSEDB_COMMON_SOURCES
+﻿if (NOT WIN32)
+    find_package(Threads REQUIRED)
+endif()
+
+set(PULSEDB_COMMON_SOURCES
     "src/storage/PulseFileWriter.cpp"
     "src/storage/PulseFileReader.cpp"
     "src/storage/StorageEngine.cpp"
@@ -30,7 +34,6 @@ set(PULSEDB_WINDOWS_COLLECTOR_SOURCES
     "src/collector/ProcessCollector.cpp"
     "src/collector/SystemMetricsCollector.cpp"
     "src/collector/PowerCollector.cpp"
-    "src/collector/CollectorScheduler.cpp"
 )
 
 set(PULSEDB_WINDOWS_COLLECTOR_TEST_SOURCES
@@ -60,6 +63,7 @@ set(PULSEDB_LINUX_COLLECTOR_TEST_SOURCES
     "tests/collector/linux/PowerCollectorTest.cpp"
 )
 
+# tests
 
 set(PULSEDB_TESTS_SOURCES
     ${PULSEDB_COMMON_SOURCES}
@@ -106,43 +110,62 @@ target_link_libraries(pulsedb_tests PRIVATE
 if (WIN32)
     target_link_libraries(pulsedb_tests PRIVATE pdh iphlpapi)
 else()
-    find_package(Threads REQUIRED)
     target_link_libraries(pulsedb_tests PRIVATE Threads::Threads)
 endif()
 
 include(GoogleTest)
 gtest_discover_tests(pulsedb_tests)
 
-# Windows only for now
+# daemon
+
+# shared by both platforms, daemon only (tests dont need these)
+set(PULSEDB_SERVER_SOURCES
+    "src/scheduler/CollectorScheduler.cpp"
+    "src/common/Config.cpp"
+    "src/api/ApiServer.cpp"
+    "src/api/websocket/LiveFeedHandler.cpp"
+    "src/alerts/AlertEngine.cpp"
+    "src/alerts/MetricExtractor.cpp"
+)
+
+set(PULSEDB_DAEMON_SOURCES
+    "src/main.cpp"
+    ${PULSEDB_COMMON_SOURCES}
+    ${PULSEDB_SERVER_SOURCES}
+)
 
 if (WIN32)
-    add_executable(pulsedb_daemon
-        "src/main.cpp"
+    list(APPEND PULSEDB_DAEMON_SOURCES ${PULSEDB_WINDOWS_COLLECTOR_SOURCES})
+else()
+    list(APPEND PULSEDB_DAEMON_SOURCES ${PULSEDB_LINUX_COLLECTOR_SOURCES})
+endif()
 
-        ${PULSEDB_COMMON_SOURCES}
-        ${PULSEDB_WINDOWS_COLLECTOR_SOURCES}
+add_executable(pulsedb_daemon ${PULSEDB_DAEMON_SOURCES})
 
-        "src/common/Config.cpp"
-
-        "src/api/ApiServer.cpp"
-        "src/api/websocket/LiveFeedHandler.cpp"
-
-        "src/alerts/AlertEngine.cpp"
-        "src/alerts/MetricExtractor.cpp"
-    )
-
+if (WIN32)
     target_compile_definitions(pulsedb_daemon PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00 NOMINMAX WIN32_LEAN_AND_MEAN)
-    set_property(TARGET pulsedb_daemon PROPERTY CXX_STANDARD 20)
-    target_include_directories(pulsedb_daemon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+endif()
+
+set_property(TARGET pulsedb_daemon PROPERTY CXX_STANDARD 20)
+target_include_directories(pulsedb_daemon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+if (WIN32)
     target_include_directories(pulsedb_daemon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/collector)
-    target_link_libraries(pulsedb_daemon PRIVATE
-        boost::boost
-        LZ4::lz4_static
-        nlohmann_json::nlohmann_json
-        SQLite::SQLite3
-        xxHash::xxhash
-        Drogon::Drogon
-        pdh
-        iphlpapi
-    )
+else()
+    target_include_directories(pulsedb_daemon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src/collector/linux)
+endif()
+
+target_link_libraries(pulsedb_daemon PRIVATE
+    boost::boost
+    LZ4::lz4_static
+    nlohmann_json::nlohmann_json
+    SQLite::SQLite3
+    xxHash::xxhash
+    Drogon::Drogon
+)
+
+if (WIN32)
+    target_link_libraries(pulsedb_daemon PRIVATE pdh iphlpapi)
+else()
+    target_link_libraries(pulsedb_daemon PRIVATE Threads::Threads)
 endif()

@@ -1,17 +1,17 @@
 #pragma once
 
-#include <cstdint>
-#include <thread>
 #include <chrono>
-#include <json/json.h>
+#include <cstdint>
 #include <functional>
+#include <json/json.h>
+#include <thread>
 
-#include "../storage/StorageEngine.h"
-#include "../queue/RingBuffer.h"
-#include "../collector/MetricSnapshot.h"
-#include "../collector/ProcessCollector.h"
 #include "../alerts/AlertEngine.h"
+#include "../collector/MetricSnapshot.h"
 #include "../common/Config.h"
+#include "../queue/RingBuffer.h"
+#include "../storage/StorageEngine.h"
+#include "ProcessCollector.h"
 
 namespace pulsedb {
 
@@ -44,6 +44,6 @@ namespace pulsedb {
 
         void run();
         void register_routes();
-        void register_alert_routes();  // split out since it's a chunk of new endpoints
+        void register_alert_routes(); // split out since it's a chunk of new endpoints
     };
-}
+} // namespace pulsedb
