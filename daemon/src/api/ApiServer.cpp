@@ -1,541 +1,668 @@
+#define RAPIDJSON_HAS_STDSTRING 1 // lets w.String() take std::string
 #include <drogon/drogon.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 
-#include "websocket/LiveFeedHandler.h"
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <cerrno>
+#include <csignal>
+#include <limits>
+#include <unistd.h>
+#endif
+
+#include "ApiServer.h"
 #include "storage/Downsampler.h"
 #include "common/Utils.h"
-#include "ApiServer.h"
-
+#include "websocket/LiveFeedHandler.h"
 namespace pulsedb {
+    // converts a MetricSnapshot into the JSON text, not using json tree anymore, this is much more efficient to do every tick
+    void snapshot_to_json(const MetricSnapshot& snap, rapidjson::StringBuffer& out) {
+        rapidjson::Writer<rapidjson::StringBuffer> w(out);
+        w.SetMaxDecimalPlaces(1); // floats print with 1 decimal
+        w.StartObject();
+        w.Key("ts");
+        w.Int64(snap.timestamp_ms);
 
-    // converts a MetricSnapshot into the JSON shape for later
-    Json::Value snapshot_to_json(const MetricSnapshot& snap) {
-        Json::Value j;
-        j["ts"] = snap.timestamp_ms;
-        j["cpu_total"] = snap.cpu_total_percent;
+        // cpu
+        w.Key("cpu_total");
+        w.Double(snap.cpu_total_percent);
+        w.Key("cpu_iowait");
+        w.Double(snap.cpu_iowait_percent); // linux only
+        w.Key("cpu_steal");
+        w.Double(snap.cpu_steal_percent); // linux only
+        w.Key("cpu_cores");
+        w.StartArray();
+        for (auto v : snap.cpu_per_core_percent)
+            w.Double(v);
+        w.EndArray();
 
-        Json::Value cores(Json::arrayValue);
-        for (auto v : snap.cpu_per_core_percent) cores.append(v);
-        j["cpu_cores"] = cores;
+        // ram and swap
+        w.Key("ram_used_bytes");
+        w.Uint64(snap.ram_used_bytes);
+        w.Key("ram_available_bytes");
+        w.Uint64(snap.ram_available_bytes);
+        w.Key("ram_total_bytes");
+        w.Uint64(snap.ram_total_bytes);
+        w.Key("swap_used_bytes");
+        w.Uint64(snap.swap_used_bytes);
+        w.Key("swap_total_bytes");
+        w.Uint64(snap.swap_total_bytes);
+        w.Key("page_cache_bytes");
+        w.Uint64(snap.page_cache_bytes); // linux only
 
-        j["ram_used_bytes"] = snap.ram_used_bytes;
-        j["ram_available_bytes"] = snap.ram_available_bytes;
-        j["ram_total_bytes"] = snap.ram_total_bytes;
-
-        Json::Value disks(Json::arrayValue);
+        // disks
+        w.Key("disks");
+        w.StartArray();
         for (const auto& d : snap.disks) {
-            Json::Value dj;
-            dj["name"] = d.device_name;
-            dj["read_bps"] = static_cast<Json::UInt64>(d.read_bytes_per_sec);
-            dj["write_bps"] = static_cast<Json::UInt64>(d.write_bytes_per_sec);
-            dj["util_pct"] = d.utilization_percent;
-            dj["queue"] = static_cast<Json::UInt64>(d.queue_depth);
-            disks.append(dj);
+            w.StartObject();
+            w.Key("name");
+            w.String(d.device_name);
+            w.Key("read_bps");
+            w.Uint64(d.read_bytes_per_sec);
+            w.Key("write_bps");
+            w.Uint64(d.write_bytes_per_sec);
+            w.Key("util_pct");
+            w.Double(d.utilization_percent);
+            w.Key("queue");
+            w.Uint64(d.queue_depth);
+            w.Key("discards_per_sec");
+            w.Uint64(d.discards_per_sec); // linux only
+            w.Key("discard_bps");
+            w.Uint64(d.discard_bytes_per_sec); // linux only
+            w.EndObject();
         }
-        j["disks"] = disks;
+        w.EndArray();
 
-        Json::Value network(Json::arrayValue);
+        // network
+        w.Key("network");
+        w.StartArray();
         for (const auto& n : snap.network_adapters) {
-            Json::Value nj;
-            nj["name"] = n.adapter_name;
-            nj["in_bps"] = static_cast<Json::UInt64>(n.bytes_in_per_sec);
-            nj["out_bps"] = static_cast<Json::UInt64>(n.bytes_out_per_sec);
-            nj["packets_in"] = static_cast<Json::UInt64>(n.packets_in_per_sec);
-            nj["packets_out"] = static_cast<Json::UInt64>(n.packets_out_per_sec);
-            network.append(nj);
+            w.StartObject();
+            w.Key("name");
+            w.String(n.adapter_name);
+            w.Key("in_bps");
+            w.Uint64(n.bytes_in_per_sec);
+            w.Key("out_bps");
+            w.Uint64(n.bytes_out_per_sec);
+            w.Key("packets_in");
+            w.Uint64(n.packets_in_per_sec);
+            w.Key("packets_out");
+            w.Uint64(n.packets_out_per_sec);
+            w.Key("rx_dropped");
+            w.Uint64(n.rx_dropped_per_sec); // linux only
+            w.Key("tx_dropped");
+            w.Uint64(n.tx_dropped_per_sec); // linux only
+            w.Key("rx_errors");
+            w.Uint64(n.rx_errors_per_sec); // linux only
+            w.Key("tx_errors");
+            w.Uint64(n.tx_errors_per_sec); // linux only
+            w.EndObject();
         }
-        j["network"] = network;
+        w.EndArray();
 
-        j["pulsedb_pid"] = snap.pulsedb_pid;
-        j["pulsedb_cpu_pct"] = snap.pulsedb_cpu_percent;
-        j["pulsedb_ram_bytes"] = snap.pulsedb_ram_bytes;
-        return j;
+        // kernel level counters
+        const auto& sys = snap.system_metrics;
+        w.Key("system_metrics");
+        w.StartObject();
+        w.Key("context_switches_per_sec");
+        w.Uint64(sys.context_switches_per_sec);
+        w.Key("system_calls_per_sec");
+        w.Uint64(sys.system_calls_per_sec);
+        w.Key("page_faults_per_sec");
+        w.Uint64(sys.page_faults_per_sec);
+        // linux only
+        w.Key("forks_per_sec");
+        w.Uint64(sys.forks_per_sec);
+        w.Key("major_page_faults_per_sec");
+        w.Uint64(sys.major_page_faults_per_sec);
+        w.Key("swap_in_bytes_per_sec");
+        w.Uint64(sys.swap_in_bytes_per_sec);
+        w.Key("swap_out_bytes_per_sec");
+        w.Uint64(sys.swap_out_bytes_per_sec);
+        w.Key("procs_running");
+        w.Uint(sys.procs_running);
+        w.Key("procs_blocked");
+        w.Uint(sys.procs_blocked);
+        w.Key("oom_kills_total");
+        w.Uint64(sys.oom_kills_total);
+        w.EndObject();
+
+        // battery and ac power
+        const auto& pw = snap.power;
+        w.Key("power");
+        w.StartObject();
+        w.Key("on_ac");
+        w.Bool(pw.on_ac_power);
+        w.Key("battery_present");
+        w.Bool(pw.battery_present);
+        w.Key("battery_pct");
+        w.Uint(pw.battery_percent);
+        w.Key("battery_secs");
+        w.Int(pw.battery_seconds_remaining);
+        w.Key("battery_full_secs");
+        w.Int(pw.battery_full_seconds_remaining);
+        // linux only
+        w.Key("battery_watts");
+        w.Double(pw.battery_power_watts);
+        w.Key("battery_health_pct");
+        w.Double(pw.battery_health_percent);
+        w.Key("battery_cycles");
+        w.Uint(pw.battery_cycle_count);
+        w.EndObject();
+
+        // top processes by cpu
+        w.Key("top_processes");
+        w.StartArray();
+        for (const auto& p : snap.top_processes) {
+            w.StartObject();
+            w.Key("pid");
+            w.Uint(p.pid);
+            w.Key("name");
+            w.String(p.name);
+            w.Key("cpu_pct");
+            w.Double(p.cpu_percent);
+            w.Key("ram_bytes");
+            w.Uint64(p.ram_bytes);
+            w.Key("threads");
+            w.Uint(p.thread_count);
+            w.Key("handles");
+            w.Uint(p.handle_count);
+            w.EndObject();
+        }
+        w.EndArray();
+
+        // pulsedb's own stats
+        w.Key("pulsedb_pid");
+        w.Uint(snap.pulsedb_pid);
+        w.Key("pulsedb_cpu_pct");
+        w.Double(snap.pulsedb_cpu_percent);
+        w.Key("pulsedb_ram_bytes");
+        w.Uint64(snap.pulsedb_ram_bytes);
+        w.EndObject();
     }
 
-    ApiServer::ApiServer(StorageEngine& storage, RingBuffer<MetricSnapshot, 300>& ring, uint16_t port) :
-        m_storage(storage),
-        m_ring(ring),
-        m_port(port),
-        m_start_time(std::chrono::steady_clock::now()) { };
+    ApiServer::ApiServer(StorageEngine& storage, RingBuffer<MetricSnapshot, 300>& ring, uint16_t port)
+        : m_storage(storage), m_ring(ring), m_port(port), m_start_time(std::chrono::steady_clock::now()) {};
 
-    void ApiServer::set_shutdown_callback(std::function<void()> cb) {
-        m_shutdown_callback = std::move(cb);
-    }
+    void ApiServer::set_shutdown_callback(std::function<void()> cb) { m_shutdown_callback = std::move(cb); }
 
-    void ApiServer::set_process_collector(ProcessCollector* pc) {
-        m_process_collector = pc;
-    }
+    void ApiServer::set_process_collector(ProcessCollector* pc) { m_process_collector = pc; }
 
-    void ApiServer::set_alert_engine(AlertEngine* engine) {
-        m_alert_engine = engine;
-    }
+    void ApiServer::set_alert_engine(AlertEngine* engine) { m_alert_engine = engine; }
 
-    void ApiServer::set_config(const Config& cfg) {
-        m_config = cfg;
-    }
+    void ApiServer::set_config(const Config& cfg) { m_config = cfg; }
 
     // drogon blocks on run() so it needs its own thread so crash here doesn't kill the daemon silently
     void ApiServer::start() {
         m_thread = std::thread([this]() {
             try {
                 run();
-            }
-            catch (const std::exception& e) {
+            } catch (const std::exception& e) {
                 std::cerr << "ApiServer thread crashed: " << e.what() << "\n";
-            }
-            catch (...) {
+            } catch (...) {
                 std::cerr << "ApiServer thread crashed with unknown exception\n";
             }
-            });
+        });
     }
 
     void ApiServer::stop() {
         drogon::app().quit();
-        if (m_thread.joinable()) m_thread.join();
+        if (m_thread.joinable())
+            m_thread.join();
     }
 
     // sets up the listener and routes, then blocks until quit() is called from stop()
     void ApiServer::run() {
         std::cout << "ApiServer: adding listener on port " << m_port << "\n";
         drogon::app().addListener("127.0.0.1", m_port);
-        drogon::app().addListener("::1", m_port);
+		drogon::app().addListener("::1", m_port);
         std::cout << "ApiServer: registering routes\n";
         register_routes();
         register_alert_routes();
 
         // catches OPTIONS requests before drogon's router deals with them, because drogon was auto answering those with a limited method list on its own
-        drogon::app().registerPreRoutingAdvice(
-            [](const drogon::HttpRequestPtr& req, drogon::FilterCallback&& stop, drogon::FilterChainCallback&& pass) {
-                if (req->method() != drogon::Options) {
-                    pass();
-                    return;
-                }
-                auto resp = drogon::HttpResponse::newHttpResponse();
-                resp->addHeader("Access-Control-Allow-Origin", "*");
-                resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-                resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-                stop(resp);
-            });
+        drogon::app().registerPreRoutingAdvice([](const drogon::HttpRequestPtr& req, drogon::FilterCallback&& stop, drogon::FilterChainCallback&& pass) {
+            if (req->method() != drogon::Options) {
+                pass();
+                return;
+            }
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->addHeader("Access-Control-Allow-Origin", "*");
+            resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+            resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+            stop(resp);
+        });
 
         // same headers but for actual real requests, not just the preflight ones
-        drogon::app().registerPostHandlingAdvice(
-            [](const drogon::HttpRequestPtr&, const drogon::HttpResponsePtr& resp) {
-                resp->addHeader("Access-Control-Allow-Origin", "*");
-                resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-                resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
-            });
+        drogon::app().registerPostHandlingAdvice([](const drogon::HttpRequestPtr&, const drogon::HttpResponsePtr& resp) {
+            resp->addHeader("Access-Control-Allow-Origin", "*");
+            resp->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+            resp->addHeader("Access-Control-Allow-Headers", "Content-Type");
+        });
 
         drogon::app().setIntSignalHandler([this]() {
-            if (m_shutdown_callback) m_shutdown_callback();
-            });
+            if (m_shutdown_callback)
+                m_shutdown_callback();
+        });
         LiveFeedHandler::init(&m_ring);
 
         std::cout << "ApiServer: starting drogon event loop\n";
+        drogon::app().disableSigtermHandling();
         drogon::app().run();
     }
 
     void ApiServer::register_routes() {
-        drogon::app().registerHandler(
-            "/api/status",
-            [this](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
-                
-                Json::Value j;
+        drogon::app().registerHandler("/api/status", [this](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            Json::Value j;
 
-                auto elapsed = std::chrono::steady_clock::now() - m_start_time;
-                j["uptime_seconds"] = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
-                j["version"] = PULSEDB_VERSION;
+            auto elapsed = std::chrono::steady_clock::now() - m_start_time;
+            j["uptime_seconds"] = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+            j["version"] = PULSEDB_VERSION;
 
-                auto response = drogon::HttpResponse::newHttpJsonResponse(j);
+            auto response = drogon::HttpResponse::newHttpJsonResponse(j);
+            callback(response);
+        }, { drogon::Get });
+
+        drogon::app().registerHandler("/api/latest", [this](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            // ring can be empty right after startup, before the first tick lands
+            auto snap = m_ring.latest();
+            if (!snap) {
+                Json::Value err;
+                err["error"] = "no data yet";
+
+                auto response = drogon::HttpResponse::newHttpJsonResponse(err);
+                response->setStatusCode(drogon::k404NotFound);
                 callback(response);
-            },
-            { drogon::Get }
-        );
+            }
+            else {
+                rapidjson::StringBuffer buffer;
+                snapshot_to_json(*snap, buffer);
+
+                auto response = drogon::HttpResponse::newHttpResponse();
+                response->setContentTypeCode(drogon::CT_APPLICATION_JSON);
+                response->setBody(std::string(buffer.GetString(), buffer.GetSize()));
+                callback(response);
+            }
+        }, { drogon::Get });
 
         drogon::app().registerHandler(
-            "/api/latest",
-            [this](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            "/api/metrics", [this](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            // only metrics with a currently open writer, not full history
+            auto metrics = m_storage.get_active_metrics();
 
-                    // ring can be empty right after startup, before the first tick lands
-                    auto snap = m_ring.latest();
-                    if (!snap) {
-                        Json::Value err;
-                        err["error"] = "no data yet";
+            Json::Value arr(Json::arrayValue);
+            for (const auto& name : metrics)
+                arr.append(name);
 
-                        auto response = drogon::HttpResponse::newHttpJsonResponse(err);
-                        response->setStatusCode(drogon::k404NotFound);
-                        callback(response);
-                    }
-                    else {
-                        Json::Value j = snapshot_to_json(*snap);
-                        auto response = drogon::HttpResponse::newHttpJsonResponse(j);
-                        callback(response);
-                    }
-            },
-            { drogon::Get }
-        );
+            Json::Value j;
+            j["metrics"] = arr;
 
-        drogon::app().registerHandler(
-            "/api/metrics",
-            [this](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            auto response = drogon::HttpResponse::newHttpJsonResponse(j);
+            callback(response);
+        }, { drogon::Get });
 
-                    // only metrics with a currently open writer, not full history
-                    auto metrics = m_storage.get_active_metrics();
+        drogon::app().registerHandler("/api/query", [this](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            auto metric = req->getParameter("metric");
+            auto from_str = req->getParameter("from");
+            auto to_str = req->getParameter("to");
+            auto resolution = req->getParameter("resolution");
+            if (resolution.empty())
+                resolution = "raw";
 
-                    Json::Value arr(Json::arrayValue);
-                    for (const auto& name : metrics) arr.append(name);
+            if (metric.empty() || from_str.empty() || to_str.empty()) {
+                Json::Value err;
+                err["error"] = "missing required parameter: metric, from, and to are all required";
 
-                    Json::Value j;
-                    j["metrics"] = arr;
+                auto response = drogon::HttpResponse::newHttpJsonResponse(err);
+                response->setStatusCode(drogon::k400BadRequest);
+                callback(response);
+                return;
+            }
 
-                    auto response = drogon::HttpResponse::newHttpJsonResponse(j);
-                    callback(response);
-            },
-            { drogon::Get }
-        );
+            int64_t from_ms, to_ms;
+            try {
+                from_ms = std::stoll(from_str);
+                to_ms = std::stoll(to_str);
+            } catch (...) {
+                Json::Value err;
+                err["error"] = "from and to must be valid integers";
 
-        drogon::app().registerHandler(
-            "/api/query",
-            [this](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+                auto response = drogon::HttpResponse::newHttpJsonResponse(err);
+                response->setStatusCode(drogon::k400BadRequest);
+                callback(response);
+                return;
+            }
 
-                    auto metric = req->getParameter("metric");
-                    auto from_str = req->getParameter("from");
-                    auto to_str = req->getParameter("to");
-                    auto resolution = req->getParameter("resolution");
-                    if (resolution.empty()) resolution = "raw";
+            Json::Value j;
+            j["metric"] = metric;
+            j["resolution"] = resolution;
+            j["from"] = from_ms;
+            j["to"] = to_ms;
 
-                    if (metric.empty() || from_str.empty() || to_str.empty()) {
-                        Json::Value err;
-                        err["error"] = "missing required parameter: metric, from, and to are all required";
+            if (resolution == "1min" || resolution == "1hr") {
+                auto summary = m_storage.query_summary(metric, from_ms, to_ms, resolution);
 
-                        auto response = drogon::HttpResponse::newHttpJsonResponse(err);
-                        response->setStatusCode(drogon::k400BadRequest);
-                        callback(response);
-                        return;
-                    }
+                Json::Value data(Json::arrayValue);
+                for (const auto& point : summary.points) {
+                    Json::Value pj;
+                    pj["ts"] = point.timestamp_ms;
+                    pj["value"] = point.value;
+                    data.append(pj);
+                }
+                j["count"] = static_cast<int>(summary.points.size());
+                j["data"] = data;
 
-                    int64_t from_ms, to_ms;
-                    try {
-                        from_ms = std::stoll(from_str);
-                        to_ms = std::stoll(to_str);
-                    }
-                    catch (...) {
-                        Json::Value err;
-                        err["error"] = "from and to must be valid integers";
+                Json::Value stats_json;
+                if (!summary.has_data) {
+                    stats_json = Json::Value(Json::nullValue);
+                }
+                else {
+                    stats_json["min"] = summary.stats.min;
+                    stats_json["max"] = summary.stats.max;
+                    stats_json["mean"] = summary.stats.mean;
+                    stats_json["p95"] = summary.stats.p95;
+                }
+                j["stats"] = stats_json;
+            }
+            else {
+                auto results = m_storage.query(metric, from_ms, to_ms);
 
-                        auto response = drogon::HttpResponse::newHttpJsonResponse(err);
-                        response->setStatusCode(drogon::k400BadRequest);
-                        callback(response);
-                        return;
-                    }
+                Json::Value data(Json::arrayValue);
+                for (const auto& reading : results) {
+                    Json::Value point;
+                    point["ts"] = reading.timestamp_ms;
+                    point["value"] = reading.value;
+                    data.append(point);
+                }
+                j["count"] = static_cast<int>(results.size());
+                j["data"] = data;
 
-                    Json::Value j;
-                    j["metric"] = metric;
-                    j["resolution"] = resolution;
-                    j["from"] = from_ms;
-                    j["to"] = to_ms;
+                Json::Value stats_json;
+                if (results.empty()) {
+                    stats_json = Json::Value(Json::nullValue);
+                }
+                else {
+                    auto stats = Downsampler::compute_stats(results);
+                    stats_json["min"] = stats.min;
+                    stats_json["max"] = stats.max;
+                    stats_json["mean"] = stats.mean;
+                    stats_json["p95"] = stats.p95;
+                }
+                j["stats"] = stats_json;
+            }
 
-                    if (resolution == "1min" || resolution == "1hr") {
-                        auto summary = m_storage.query_summary(metric, from_ms, to_ms, resolution);
-
-                        Json::Value data(Json::arrayValue);
-                        for (const auto& point : summary.points) {
-                            Json::Value pj;
-                            pj["ts"] = point.timestamp_ms;
-                            pj["value"] = point.value;
-                            data.append(pj);
-                        }
-                        j["count"] = static_cast<int>(summary.points.size());
-                        j["data"] = data;
-
-                        Json::Value stats_json;
-                        if (!summary.has_data) {
-                            stats_json = Json::Value(Json::nullValue);
-                        }
-                        else {
-                            stats_json["min"] = summary.stats.min;
-                            stats_json["max"] = summary.stats.max;
-                            stats_json["mean"] = summary.stats.mean;
-                            stats_json["p95"] = summary.stats.p95;
-                        }
-                        j["stats"] = stats_json;
-                    }
-                    else {
-                        auto results = m_storage.query(metric, from_ms, to_ms);
-
-                        Json::Value data(Json::arrayValue);
-                        for (const auto& reading : results) {
-                            Json::Value point;
-                            point["ts"] = reading.timestamp_ms;
-                            point["value"] = reading.value;
-                            data.append(point);
-                        }
-                        j["count"] = static_cast<int>(results.size());
-                        j["data"] = data;
-
-                        Json::Value stats_json;
-                        if (results.empty()) {
-                            stats_json = Json::Value(Json::nullValue);
-                        }
-                        else {
-                            auto stats = Downsampler::compute_stats(results);
-                            stats_json["min"] = stats.min;
-                            stats_json["max"] = stats.max;
-                            stats_json["mean"] = stats.mean;
-                            stats_json["p95"] = stats.p95;
-                        }
-                        j["stats"] = stats_json;
-                    }
-
-                    auto response = drogon::HttpResponse::newHttpJsonResponse(j);
-                    callback(response);
-            },
-            { drogon::Get }
-        );
+            auto response = drogon::HttpResponse::newHttpJsonResponse(j);
+            callback(response);
+        }, { drogon::Get });
 
         drogon::app().registerHandler(
-            "/api/processes/latest",
-            [this](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            "/api/processes/latest", [this](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            if (!m_process_collector) {
+                Json::Value err;
+                err["error"] = "process collector not available";
+                auto response = drogon::HttpResponse::newHttpJsonResponse(err);
+                response->setStatusCode(drogon::k503ServiceUnavailable);
+                callback(response);
+                return;
+            }
 
-                    if (!m_process_collector) {
-                        Json::Value err;
-                        err["error"] = "process collector not available";
-                        auto response = drogon::HttpResponse::newHttpJsonResponse(err);
-                        response->setStatusCode(drogon::k503ServiceUnavailable);
-                        callback(response);
-                        return;
-                    }
+            // full list, unsorted past the top 25 since only those are sorted by partial sort
+            const auto& processes = m_process_collector->get_all_processes();
 
-                    // full list, unsorted past the top 25 since only those are sorted by partial sort
-                    const auto& processes = m_process_collector->get_all_processes();
+            Json::Value arr(Json::arrayValue);
+            for (const auto& p : processes) {
+                Json::Value pj;
+                pj["pid"] = p.pid;
+                pj["name"] = p.name;
+                pj["cpu_pct"] = p.cpu_percent;
+                pj["ram_bytes"] = p.ram_bytes;
+                pj["threads"] = p.thread_count;
+                pj["handles"] = p.handle_count;
+                arr.append(pj);
+            }
 
-                    Json::Value arr(Json::arrayValue);
-                    for (const auto& p : processes) {
-                        Json::Value pj;
-                        pj["pid"] = p.pid;
-                        pj["name"] = p.name;
-                        pj["cpu_pct"] = p.cpu_percent;
-                        pj["ram_bytes"] = p.ram_bytes;
-                        pj["threads"] = p.thread_count;
-                        pj["handles"] = p.handle_count;
-                        arr.append(pj);
-                    }
+            Json::Value j;
+            j["count"] = static_cast<int>(processes.size());
+            j["processes"] = arr;
 
-                    Json::Value j;
-                    j["count"] = static_cast<int>(processes.size());
-                    j["processes"] = arr;
-
-                    auto response = drogon::HttpResponse::newHttpJsonResponse(j);
-                    callback(response);
-            },
-            { drogon::Get }
-        );
+            auto response = drogon::HttpResponse::newHttpJsonResponse(j);
+            callback(response);
+        }, { drogon::Get });
 
         drogon::app().registerHandler(
-            "/api/processes/{1}/kill",
-            [this](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback, uint32_t pid) {
+            "/api/processes/{1}/kill", [this](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback, uint32_t pid) {
+            Json::Value j;
 
-                    HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
-                    Json::Value j;
+#ifdef _WIN32
+            HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
 
-                    if (!h) {
-                        j["success"] = false;
-                        j["error"] = "could not open process, might need admin rights or it's protected";
-                        auto resp = drogon::HttpResponse::newHttpJsonResponse(j);
-                        resp->setStatusCode(drogon::k403Forbidden);
-                        callback(resp);
-                        return;
-                    }
+            if (!h) {
+                j["success"] = false;
+                j["error"] = "could not open process, might need admin rights or it's protected";
+                auto resp = drogon::HttpResponse::newHttpJsonResponse(j);
+                resp->setStatusCode(drogon::k403Forbidden);
+                callback(resp);
+                return;
+            }
 
-                    BOOL ok = TerminateProcess(h, 1);
-                    CloseHandle(h);
+            BOOL ok = TerminateProcess(h, 1);
+            CloseHandle(h);
 
-                    j["success"] = ok != 0;
-                    auto resp = drogon::HttpResponse::newHttpJsonResponse(j);
-                    resp->setStatusCode(ok ? drogon::k200OK : drogon::k500InternalServerError);
-                    callback(resp);
-            },
-            { drogon::Post }
-        );
+            j["success"] = ok != 0;
+            auto resp = drogon::HttpResponse::newHttpJsonResponse(j);
+            resp->setStatusCode(ok ? drogon::k200OK : drogon::k500InternalServerError);
+            callback(resp);
+#else
+            // kill(0) / kill(-1) signal our own group or every process we can reach, and a uint32 over
+            // INT32_MAX turns negative when cast to pid_t, so block all of those plus init and ourselves
+            if (pid <= 1 || pid > static_cast<uint32_t>(std::numeric_limits<pid_t>::max()) || static_cast<pid_t>(pid) == getpid()) {
+                j["success"] = false;
+                j["error"] = "refusing to kill that pid";
+                auto resp = drogon::HttpResponse::newHttpJsonResponse(j);
+                resp->setStatusCode(drogon::k400BadRequest);
+                callback(resp);
+                return;
+            }
 
-        drogon::app().registerHandler(
-            "/api/config",
-            [this](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            // sigterm asks the process to exit cleanly, same as running plain `kill`
+            if (kill(static_cast<pid_t>(pid), SIGTERM) != 0) {
+                j["success"] = false;
+                auto resp = drogon::HttpResponse::newHttpJsonResponse(j);
+                if (errno == EPERM) {
+                    j["error"] = "not allowed to kill that process, might need root or it belongs to another user";
+                    resp = drogon::HttpResponse::newHttpJsonResponse(j);
+                    resp->setStatusCode(drogon::k403Forbidden);
+                }
+                else if (errno == ESRCH) {
+                    j["error"] = "no process with that pid";
+                    resp = drogon::HttpResponse::newHttpJsonResponse(j);
+                    resp->setStatusCode(drogon::k404NotFound);
+                }
+                else {
+                    j["error"] = "kill failed";
+                    resp = drogon::HttpResponse::newHttpJsonResponse(j);
+                    resp->setStatusCode(drogon::k500InternalServerError);
+                }
+                callback(resp);
+                return;
+            }
 
-                    Json::Value j;
-                    j["api_port"] = m_config.api_port;
-                    j["data_directory"] = m_config.data_directory;
-                    j["collection_interval_ms"] = m_config.collection_interval_ms;
-                    j["retention"]["raw_days"] = m_config.retention_raw_days;
-                    j["retention"]["summary_1min_days"] = m_config.retention_1min_days;
-                    j["retention"]["summary_1hr_days"] = m_config.retention_1hr_days;
+            j["success"] = true;
+            auto resp = drogon::HttpResponse::newHttpJsonResponse(j);
+            resp->setStatusCode(drogon::k200OK);
+            callback(resp);
+#endif
+        }, { drogon::Post });
 
-                    callback(drogon::HttpResponse::newHttpJsonResponse(j));
-            },
-            { drogon::Get }
-        );
+        drogon::app().registerHandler("/api/config", [this](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            Json::Value j;
+            j["api_port"] = m_config.api_port;
+            j["data_directory"] = m_config.data_directory;
+            j["collection_interval_ms"] = m_config.collection_interval_ms;
+            j["retention"]["raw_days"] = m_config.retention_raw_days;
+            j["retention"]["summary_1min_days"] = m_config.retention_1min_days;
+            j["retention"]["summary_1hr_days"] = m_config.retention_1hr_days;
 
-        drogon::app().registerHandler(
-            "/api/config",
-            [this](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            callback(drogon::HttpResponse::newHttpJsonResponse(j));
+        }, { drogon::Get });
 
-                    auto json = req->getJsonObject();
-                    if (!json) {
-                        auto resp = drogon::HttpResponse::newHttpResponse();
-                        resp->setStatusCode(drogon::k400BadRequest);
-                        callback(resp);
-                        return;
-                    }
+        drogon::app().registerHandler("/api/config", [this](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            auto json = req->getJsonObject();
+            if (!json) {
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setStatusCode(drogon::k400BadRequest);
+                callback(resp);
+                return;
+            }
 
-                    // only overwrite fields that were actually sent, keep the rest as-is
-                    Config updated = m_config;
-                    if (json->isMember("api_port")) updated.api_port = (*json)["api_port"].asUInt();
-                    if (json->isMember("data_directory")) updated.data_directory = (*json)["data_directory"].asString();
-                    if (json->isMember("collection_interval_ms")) updated.collection_interval_ms = (*json)["collection_interval_ms"].asInt();
-                    if (json->isMember("retention")) {
-                        auto& r = (*json)["retention"];
-                        if (r.isMember("raw_days")) updated.retention_raw_days = r["raw_days"].asInt();
-                        if (r.isMember("summary_1min_days")) updated.retention_1min_days = r["summary_1min_days"].asInt();
-                        if (r.isMember("summary_1hr_days")) updated.retention_1hr_days = r["summary_1hr_days"].asInt();
-                    }
+            // only overwrite fields that were actually sent, keep the rest as-is
+            Config updated = m_config;
+            if (json->isMember("api_port"))
+                updated.api_port = (*json)["api_port"].asUInt();
+            if (json->isMember("data_directory"))
+                updated.data_directory = (*json)["data_directory"].asString();
+            if (json->isMember("collection_interval_ms"))
+                updated.collection_interval_ms = (*json)["collection_interval_ms"].asInt();
+            if (json->isMember("retention")) {
+                auto& r = (*json)["retention"];
+                if (r.isMember("raw_days"))
+                    updated.retention_raw_days = r["raw_days"].asInt();
+                if (r.isMember("summary_1min_days"))
+                    updated.retention_1min_days = r["summary_1min_days"].asInt();
+                if (r.isMember("summary_1hr_days"))
+                    updated.retention_1hr_days = r["summary_1hr_days"].asInt();
+            }
 
-                    if (!save_config(updated)) {
-                        auto resp = drogon::HttpResponse::newHttpResponse();
-                        resp->setStatusCode(drogon::k500InternalServerError);
-                        callback(resp);
-                        return;
-                    }
+            if (!save_config(updated)) {
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setStatusCode(drogon::k500InternalServerError);
+                callback(resp);
+                return;
+            }
 
-                    m_config = updated;
+            m_config = updated;
 
-                    Json::Value j;
-                    j["saved"] = true;
-                    j["restart_required"] = true; // nothing hot-reloads yet, being upfront about it in the response itself
-                    callback(drogon::HttpResponse::newHttpJsonResponse(j));
-            },
-            { drogon::Put }
-        );
+            Json::Value j;
+            j["saved"] = true;
+            j["restart_required"] = true; // nothing hot-reloads yet, being upfront about it in the response itself
+            callback(drogon::HttpResponse::newHttpJsonResponse(j));
+        }, { drogon::Put });
     }
 
     void ApiServer::register_alert_routes() {
-        if (!m_alert_engine) return;  // stage 1/2 only, no crud wired in
+        if (!m_alert_engine)
+            return; // stage 1/2 only, no crud wired in
 
         AlertEngine* engine = m_alert_engine;
 
-        drogon::app().registerHandler("/api/alerts/rules",
-            [engine](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
-                    Json::Value arr(Json::arrayValue);
-                    for (const auto& r : engine->get_rules()) arr.append(rule_to_json(r));
-                    callback(drogon::HttpResponse::newHttpJsonResponse(arr));
-            }, { drogon::Get });
+        drogon::app().registerHandler(
+            "/api/alerts/rules", [engine](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            Json::Value arr(Json::arrayValue);
+            for (const auto& r : engine->get_rules())
+                arr.append(rule_to_json(r));
+            callback(drogon::HttpResponse::newHttpJsonResponse(arr));
+        }, { drogon::Get });
 
-        drogon::app().registerHandler("/api/alerts/rules",
-            [engine](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
-                    auto json = req->getJsonObject();
-                    if (!json) {
-                        auto resp = drogon::HttpResponse::newHttpResponse();
-                        resp->setStatusCode(drogon::k400BadRequest);
-                        callback(resp);
-                        return;
-                    }
-                    AlertRule rule = json_to_rule(*json);
-                    int64_t id = engine->add_rule(rule);
-                    Json::Value result;
-                    result["id"] = static_cast<Json::Int64>(id);
-                    auto resp = drogon::HttpResponse::newHttpJsonResponse(result);
-                    resp->setStatusCode(id > 0 ? drogon::k201Created : drogon::k500InternalServerError);
-                    callback(resp);
-            }, { drogon::Post });
+        drogon::app().registerHandler(
+            "/api/alerts/rules", [engine](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            auto json = req->getJsonObject();
+            if (!json) {
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setStatusCode(drogon::k400BadRequest);
+                callback(resp);
+                return;
+            }
+            AlertRule rule = json_to_rule(*json);
+            int64_t id = engine->add_rule(rule);
+            Json::Value result;
+            result["id"] = static_cast<Json::Int64>(id);
+            auto resp = drogon::HttpResponse::newHttpJsonResponse(result);
+            resp->setStatusCode(id > 0 ? drogon::k201Created : drogon::k500InternalServerError);
+            callback(resp);
+        }, { drogon::Post });
 
-        drogon::app().registerHandler("/api/alerts/rules/{1}",
-            [engine](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback, int64_t id) {
-                    auto json = req->getJsonObject();
-                    if (!json) {
-                        auto resp = drogon::HttpResponse::newHttpResponse();
-                        resp->setStatusCode(drogon::k400BadRequest);
-                        callback(resp);
-                        return;
-                    }
-                    AlertRule rule = json_to_rule(*json);
-                    bool ok = engine->update_rule(id, rule);
-                    auto resp = drogon::HttpResponse::newHttpResponse();
-                    resp->setStatusCode(ok ? drogon::k200OK : drogon::k404NotFound);
-                    callback(resp);
-            }, { drogon::Put });
+        drogon::app().registerHandler(
+            "/api/alerts/rules/{1}", [engine](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback, int64_t id) {
+            auto json = req->getJsonObject();
+            if (!json) {
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setStatusCode(drogon::k400BadRequest);
+                callback(resp);
+                return;
+            }
+            AlertRule rule = json_to_rule(*json);
+            bool ok = engine->update_rule(id, rule);
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->setStatusCode(ok ? drogon::k200OK : drogon::k404NotFound);
+            callback(resp);
+        }, { drogon::Put });
 
-        drogon::app().registerHandler("/api/alerts/rules/{1}",
-            [engine](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback, int64_t id) {
-                    bool ok = engine->delete_rule(id);
-                    auto resp = drogon::HttpResponse::newHttpResponse();
-                    resp->setStatusCode(ok ? drogon::k200OK : drogon::k404NotFound);
-                    callback(resp);
-            }, { drogon::Delete });
+        drogon::app().registerHandler(
+            "/api/alerts/rules/{1}", [engine](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback, int64_t id) {
+            bool ok = engine->delete_rule(id);
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->setStatusCode(ok ? drogon::k200OK : drogon::k404NotFound);
+            callback(resp);
+        }, { drogon::Delete });
 
-        drogon::app().registerHandler("/api/alerts/history/{1}",
-            [engine](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback, int64_t id) {
-                    bool ok = engine->delete_history_entry(id);
-                    auto resp = drogon::HttpResponse::newHttpResponse();
-                    resp->setStatusCode(ok ? drogon::k200OK : drogon::k404NotFound);
-                    callback(resp);
-            }, { drogon::Delete });
+        drogon::app().registerHandler(
+            "/api/alerts/history/{1}", [engine](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback, int64_t id) {
+            bool ok = engine->delete_history_entry(id);
+            auto resp = drogon::HttpResponse::newHttpResponse();
+            resp->setStatusCode(ok ? drogon::k200OK : drogon::k404NotFound);
+            callback(resp);
+        }, { drogon::Delete });
 
-        drogon::app().registerHandler("/api/alerts/history",
-            [engine](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
-                    auto older_than = req->getParameter("older_than_ms");
-                    if (older_than.empty()) {
-                        auto resp = drogon::HttpResponse::newHttpResponse();
-                        resp->setStatusCode(drogon::k400BadRequest);
-                        callback(resp);
-                        return;
-                    }
-                    int64_t cutoff = std::stoll(older_than);
-                    int deleted = engine->delete_history_older_than(cutoff);
-                    Json::Value j;
-                    j["deleted"] = deleted;
-                    callback(drogon::HttpResponse::newHttpJsonResponse(j));
-            }, { drogon::Delete });
+        drogon::app().registerHandler(
+            "/api/alerts/history", [engine](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            auto older_than = req->getParameter("older_than_ms");
+            if (older_than.empty()) {
+                auto resp = drogon::HttpResponse::newHttpResponse();
+                resp->setStatusCode(drogon::k400BadRequest);
+                callback(resp);
+                return;
+            }
+            int64_t cutoff = std::stoll(older_than);
+            int deleted = engine->delete_history_older_than(cutoff);
+            Json::Value j;
+            j["deleted"] = deleted;
+            callback(drogon::HttpResponse::newHttpJsonResponse(j));
+        }, { drogon::Delete });
 
-        drogon::app().registerHandler("/api/alerts/history",
-            [engine](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
-                    int limit = 50, offset = 0;
-                    int64_t rule_id_filter = 0;
-                    if (auto p = req->getParameter("limit"); !p.empty()) limit = std::stoi(p);
-                    if (auto p = req->getParameter("offset"); !p.empty()) offset = std::stoi(p);
-                    if (auto p = req->getParameter("rule_id"); !p.empty()) rule_id_filter = std::stoll(p);
+        drogon::app().registerHandler(
+            "/api/alerts/history", [engine](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            int limit = 50, offset = 0;
+            int64_t rule_id_filter = 0;
+            if (auto p = req->getParameter("limit"); !p.empty())
+                limit = std::stoi(p);
+            if (auto p = req->getParameter("offset"); !p.empty())
+                offset = std::stoi(p);
+            if (auto p = req->getParameter("rule_id"); !p.empty())
+                rule_id_filter = std::stoll(p);
 
-                    Json::Value arr(Json::arrayValue);
-                    for (const auto& h : engine->get_history(limit, offset, rule_id_filter)) {
-                        Json::Value j;
-                        j["id"] = static_cast<Json::Int64>(h.id);
-                        j["rule_id"] = static_cast<Json::Int64>(h.rule_id);
-                        j["triggered_at"] = static_cast<Json::Int64>(h.triggered_at);
-                        j["resolved_at"] = static_cast<Json::Int64>(h.resolved_at);
-                        j["peak_value"] = h.peak_value;
-                        j["duration_seconds"] = static_cast<Json::Int64>(h.duration_seconds);
-                        j["note"] = h.note;
-                        arr.append(j);
-                    }
-                    callback(drogon::HttpResponse::newHttpJsonResponse(arr));
-            }, { drogon::Get });
+            Json::Value arr(Json::arrayValue);
+            for (const auto& h : engine->get_history(limit, offset, rule_id_filter)) {
+                Json::Value j;
+                j["id"] = static_cast<Json::Int64>(h.id);
+                j["rule_id"] = static_cast<Json::Int64>(h.rule_id);
+                j["triggered_at"] = static_cast<Json::Int64>(h.triggered_at);
+                j["resolved_at"] = static_cast<Json::Int64>(h.resolved_at);
+                j["peak_value"] = h.peak_value;
+                j["duration_seconds"] = static_cast<Json::Int64>(h.duration_seconds);
+                j["note"] = h.note;
+                arr.append(j);
+            }
+            callback(drogon::HttpResponse::newHttpJsonResponse(arr));
+        }, { drogon::Get });
 
-        drogon::app().registerHandler("/api/alerts/active",
-            [engine](const drogon::HttpRequestPtr& req,
-                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
-                    Json::Value arr(Json::arrayValue);
-                    for (const auto& s : engine->get_active_states()) arr.append(s);
-                    callback(drogon::HttpResponse::newHttpJsonResponse(arr));
-            }, { drogon::Get });
+        drogon::app().registerHandler(
+            "/api/alerts/active", [engine](const drogon::HttpRequestPtr& req, std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+            Json::Value arr(Json::arrayValue);
+            for (const auto& s : engine->get_active_states())
+                arr.append(s);
+            callback(drogon::HttpResponse::newHttpJsonResponse(arr));
+        }, { drogon::Get });
     }
-}
+} // namespace pulsedb

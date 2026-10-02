@@ -15,7 +15,8 @@ namespace pulsedb {
 			return row.Type == IF_TYPE_SOFTWARE_LOOPBACK
 				|| row.Type == IF_TYPE_TUNNEL
 				|| row.InterfaceAndOperStatusFlags.FilterInterface
-				|| !row.InterfaceAndOperStatusFlags.HardwareInterface;
+				|| !row.InterfaceAndOperStatusFlags.HardwareInterface
+				|| row.OperStatus != IfOperStatusUp;
 		}
 	}
 	// returns name just in case i forget this obscure function

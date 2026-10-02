@@ -1,21 +1,23 @@
 #pragma once
 
 #include <atomic>
-#include <vector>
-#include <memory>
-#include <chrono>
 #include <boost/asio.hpp>
+#include <chrono>
+#include <csignal>
+#include <memory>
+#include <thread>
+#include <vector>
 
-#include "IMetricCollector.h"
-#include "MetricSnapshot.h"
-#include "ProcessCollector.h"
-#include "../queue/SpscQueue.h"
 #include "../queue/RingBuffer.h"
+#include "../queue/SpscQueue.h"
+#include "ProcessCollector.h"
+#include "collector/IMetricCollector.h"
+#include "collector/MetricSnapshot.h"
 
 namespace pulsedb {
 
     // owns all the collectors and runs them every second using a boost asio timer
-    class  CollectorScheduler {
+    class CollectorScheduler {
     public:
         CollectorScheduler(SpscQueue<MetricSnapshot, 1024>& queue, RingBuffer<MetricSnapshot, 300>& ring, int interval_ms);
         void start();
@@ -32,6 +34,8 @@ namespace pulsedb {
         // asio event loop that drives the timer
         boost::asio::io_context m_io;
         boost::asio::steady_timer m_timer;
+        // ctrl+c / kill go through stop() instead of killing the process, has to come after m_io
+        boost::asio::signal_set m_signals;
         std::thread m_io_thread;
 
         // reused every tick - vectors get cleared at the start of each tick to avoid stale data
@@ -49,4 +53,4 @@ namespace pulsedb {
 
         void tick();
     };
-}
+} // namespace pulsedb

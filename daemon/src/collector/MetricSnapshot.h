@@ -4,9 +4,10 @@
 #include <string>
 #include <vector>
 
-// IMPORTANT - many of the stats here are collected but not implemented into pulse files and proper collection yet
+// IMPORTANT - many of the stats here are collected but not implemented into
+// pulse files and proper collection yet
 // TODO
-// - Power state 
+// - Power state
 // - System metrics
 // - Top processes
 // - Swap usage, disk utilization%, disk queue depth, packet rates
@@ -14,83 +15,108 @@
 
 namespace pulsedb {
 
-	// everything we measure in one tick, one of these is pushed into the queue every second
-	struct MetricSnapshot {
-		// when this snapshot was taken, unix milliseconds
-		int64_t timestamp_ms{ 0 };
+    // everything we measure in one tick, one of these is pushed into the queue
+    // every second
+    struct MetricSnapshot {
+        // when this snapshot was taken, unix milliseconds
+        int64_t timestamp_ms{ 0 };
 
-		float cpu_total_percent{ 0.0f };
-		std::vector<float> cpu_per_core_percent;
-		std::vector<float> cpu_per_core_frequency_mhz;
-		
-		uint64_t ram_total_bytes{ 0 };
-		uint64_t ram_used_bytes{ 0 };
-		uint64_t ram_available_bytes{ 0 };
-		uint64_t swap_total_bytes{ 0 };
-		uint64_t swap_used_bytes{ 0 };
+        float cpu_total_percent{ 0.0f };
+        std::vector<float> cpu_per_core_percent;
+        std::vector<float> cpu_per_core_frequency_mhz;
+        float cpu_iowait_percent{ 0.0f }; // Linux only, always 0.0f on Windows
+        float cpu_steal_percent{ 0.0f };  // Linux only, meaningful mainly with VMs. Always 0.0f on Windows
 
-		uint32_t pulsedb_pid{ 0 };
-		float    pulsedb_cpu_percent{ 0.0f };
-		uint64_t pulsedb_ram_bytes{ 0 };
+        uint64_t ram_total_bytes{ 0 };
+        uint64_t ram_used_bytes{ 0 };
+        uint64_t ram_available_bytes{ 0 };
+        uint64_t swap_total_bytes{ 0 };
+        uint64_t swap_used_bytes{ 0 };
+        uint64_t page_cache_bytes{ 0 }; // Linux only, buffers + cached (reclaimable file cache). Always 0 on Windows
 
-		// per physical-disk metrics
-		struct DiskStats {
-			std::string device_name;
-			uint64_t read_bytes_per_sec{ 0 };
-			uint64_t write_bytes_per_sec{ 0 };
-			float utilization_percent{ 0.0f };
-			uint64_t queue_depth{ 0 };
-		};
-		
-		// per adapter metrics
-		struct NetworkStats {
-			std::string adapter_name;
-			uint64_t bytes_in_per_sec{ 0 };
-			uint64_t bytes_out_per_sec{ 0 };
-			uint64_t packets_in_per_sec{ 0 };
-			uint64_t packets_out_per_sec{ 0 };
-		};
+        uint32_t pulsedb_pid{ 0 };
+        float pulsedb_cpu_percent{ 0.0f };
+        uint64_t pulsedb_ram_bytes{ 0 };
 
-		// per process stats but only the top 25 by CPU usage end up in the snapshot
-		struct ProcessInfo {
-			uint32_t pid{ 0 };
-			std::string name;
-			float cpu_percent{ 0.0f };
-			uint64_t ram_bytes{ 0 };
-			uint32_t thread_count{ 0 };
-			uint32_t handle_count{ 0 };
-			uint64_t disk_read_bytes_per_sec{ 0 };
-			uint64_t disk_write_bytes_per_sec{ 0 };
-		};
+        // per physical-disk metrics
+        struct DiskStats {
+            std::string device_name;
+            uint64_t read_bytes_per_sec{ 0 };
+            uint64_t write_bytes_per_sec{ 0 };
+            float utilization_percent{ 0.0f };
+            uint64_t queue_depth{ 0 };
+            uint64_t discards_per_sec{ 0 };
+            uint64_t discard_bytes_per_sec{ 0 };
+        };
 
-		// kernel level counters
-		struct SystemMetrics {
-			uint64_t context_switches_per_sec{ 0 };
-			uint64_t system_calls_per_sec{ 0 };
-			uint64_t page_faults_per_sec{ 0 };
-		};
+        // per adapter metrics
+        struct NetworkStats {
+            std::string adapter_name;
+            uint64_t bytes_in_per_sec{ 0 };
+            uint64_t bytes_out_per_sec{ 0 };
+            uint64_t packets_in_per_sec{ 0 };
+            uint64_t packets_out_per_sec{ 0 };
+            uint64_t rx_dropped_per_sec{ 0 }; // Linux-only, always 0 on Windows
+            uint64_t tx_dropped_per_sec{ 0 }; // Linux-only, always 0 on Windows
+            uint64_t rx_errors_per_sec{ 0 };  // Linux-only, always 0 on Windows
+            uint64_t tx_errors_per_sec{ 0 };  // Linux-only, always 0 on Windows
+        };
 
-		// battery and AC power status
-		struct PowerState {
-			bool on_ac_power{ false };
-			bool battery_present{ false };
-			uint8_t battery_percent{ 0 };
-			int32_t battery_seconds_remaining{ -1 };
-			int32_t battery_full_seconds_remaining{ -1 };
-		};
+        // per process stats but only the top 25 by CPU usage end up in the
+        // snapshot
+        struct ProcessInfo {
+            uint32_t pid{ 0 };
+            std::string name;
+            float cpu_percent{ 0.0f };
+            uint64_t ram_bytes{ 0 };
+            uint32_t thread_count{ 0 };
+            uint32_t handle_count{ 0 };
+            uint64_t disk_read_bytes_per_sec{ 0 };
+            uint64_t disk_write_bytes_per_sec{ 0 };
+        };
 
-		std::vector<DiskStats> disks;
-		std::vector<NetworkStats> network_adapters;
-		std::vector<ProcessInfo> top_processes;
-		SystemMetrics system_metrics;
-		PowerState power;
+        // kernel level counters
+        struct SystemMetrics {
+            uint64_t context_switches_per_sec{ 0 };
+            uint64_t system_calls_per_sec{ 0 };
+            uint64_t page_faults_per_sec{ 0 };
 
-		void reserve(int core_count, int disk_count, int adapter_count, int process_count) {
-			cpu_per_core_percent.reserve(core_count);
-			cpu_per_core_frequency_mhz.reserve(core_count);
-			disks.reserve(disk_count);
-			network_adapters.reserve(adapter_count);
-			top_processes.reserve(process_count);
-		}
-	};
-}
+            // linux only, stay 0 on windows
+            uint64_t forks_per_sec{ 0 };
+            uint64_t major_page_faults_per_sec{ 0 };
+            uint64_t swap_in_bytes_per_sec{ 0 };
+            uint64_t swap_out_bytes_per_sec{ 0 };
+            uint32_t procs_running{ 0 };
+            uint32_t procs_blocked{ 0 };
+            uint64_t oom_kills_total{ 0 };
+        };
+
+        // battery and AC power status
+        struct PowerState {
+            bool on_ac_power{ false };
+            bool battery_present{ false };
+            uint8_t battery_percent{ 0 };
+            int32_t battery_seconds_remaining{ -1 };
+            int32_t battery_full_seconds_remaining{ -1 };
+
+            // linux only
+            float battery_power_watts{ 0.0f };
+            float battery_health_percent{ 0.0f };
+            uint32_t battery_cycle_count{ 0 };
+        };
+
+        std::vector<DiskStats> disks;
+        std::vector<NetworkStats> network_adapters;
+        std::vector<ProcessInfo> top_processes;
+        SystemMetrics system_metrics;
+        PowerState power;
+
+        void reserve(int core_count, int disk_count, int adapter_count, int process_count) {
+            cpu_per_core_percent.reserve(core_count);
+            cpu_per_core_frequency_mhz.reserve(core_count);
+            disks.reserve(disk_count);
+            network_adapters.reserve(adapter_count);
+            top_processes.reserve(process_count);
+        }
+    };
+} // namespace pulsedb

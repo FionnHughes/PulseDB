@@ -19,7 +19,11 @@ namespace pulsedb {
 		t.tm_mon = month - 1;
 		t.tm_mday = day;
 
+		#ifdef _WIN32
 		std::time_t seconds = _mkgmtime(&t);
+		#else
+		std::time_t seconds = timegm(&t);
+		#endif
 		if (seconds == -1) return -1;
 
 		return static_cast<int64_t>(seconds) * 1000LL;

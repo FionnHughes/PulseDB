@@ -1,12 +1,31 @@
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
-#include <filesystem>
 #include <nlohmann/json.hpp>
 
 #include "Config.h"
 
 namespace pulsedb {
-	static const std::string CONFIG_PATH = "C:/ProgramData/PulseDB/pulsedb.json";
+
+    std::string default_config_path() {
+#ifdef _WIN32
+        return "C:/ProgramData/PulseDB/pulsedb.json";
+#else
+        // '.' if HOME isnt set for some reason
+        const char* home = std::getenv("HOME");
+        return std::string(home ? home : ".") + "/.config/pulsedb/pulsedb.json";
+#endif
+    }
+
+    std::string default_data_dir() {
+#ifdef _WIN32
+        return "C:/ProgramData/PulseDB/data";
+#else
+        const char* home = std::getenv("HOME");
+        return std::string(home ? home : ".") + "/.local/share/pulsedb/data";
+#endif
+    }
 
     // turns a Config struct into json, used both for writing defaults and for reference
     static nlohmann::json config_to_json(const Config& cfg) {
@@ -20,18 +39,16 @@ namespace pulsedb {
         return j;
     }
 
-    
-    // pulls one field out of json into cfg, falls back to whatever default is already sitting in cfg if the key is missing or the wrong type, and warns either way
-    template<typename T>
-    static void read_field(const nlohmann::json& j, const std::string& key, T& out) {
+    // pulls one field out of json into cfg, falls back to whatever default is already sitting in cfg if the key is missing or the wrong type, and warns either
+    // way
+    template <typename T> static void read_field(const nlohmann::json& j, const std::string& key, T& out) {
         if (!j.contains(key)) {
             std::cerr << "config: missing '" << key << "', using default\n";
             return;
         }
         try {
             out = j.at(key).get<T>();
-        }
-        catch (...) {
+        } catch (...) {
             std::cerr << "config: bad value for '" << key << "', using default\n";
         }
     }
@@ -39,13 +56,13 @@ namespace pulsedb {
     Config load_config() {
         Config cfg; // defaults live here already, from the struct's member initializers
 
-        std::filesystem::path path(CONFIG_PATH);
+        std::filesystem::path path(default_config_path());
 
         if (!std::filesystem::exists(path)) {
-            std::filesystem::create_directories(path.parent_path());
-            std::ofstream out(path);
+            std::filesystem::create_directories(std::filesystem::path(default_config_path()).parent_path());
+            std::ofstream out(default_config_path());
             out << config_to_json(cfg).dump(4);
-            std::cout << "config: no pulsedb.json found, wrote defaults to " << CONFIG_PATH << "\n";
+            std::cout << "config: no pulsedb.json found, wrote defaults to " << default_config_path() << "\n";
             return cfg;
         }
 
@@ -53,8 +70,7 @@ namespace pulsedb {
         nlohmann::json j;
         try {
             in >> j;
-        }
-        catch (...) {
+        } catch (...) {
             std::cerr << "config: pulsedb.json is not valid json, using all defaults\n";
             return cfg;
         }
@@ -76,18 +92,18 @@ namespace pulsedb {
         return cfg;
     }
 
-    // writes cfg back to CONFIG_PATH, overwriting whatever's already there
+    // writes cfg back to default_config_path(), overwriting whatever's already there
     bool save_config(const Config& cfg) {
-        std::filesystem::path path(CONFIG_PATH);
+        std::filesystem::path path(default_config_path());
         try {
-            std::filesystem::create_directories(path.parent_path());
-            std::ofstream out(path);
-            if (!out) return false;
+            std::filesystem::create_directories(std::filesystem::path(default_config_path()).parent_path());
+            std::ofstream out(default_config_path());
+            if (!out)
+                return false;
             out << config_to_json(cfg).dump(4);
             return true;
-        }
-        catch (...) {
+        } catch (...) {
             return false;
         }
     }
-}
+} // namespace pulsedb

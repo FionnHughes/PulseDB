@@ -5,7 +5,13 @@
 #include <mutex>
 #include <sqlite3.h>
 #include <boost/asio.hpp>
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <fcntl.h>      // open(), O_RDWR, O_CREAT
+#include <sys/file.h>   // flock(), LOCK_EX, LOCK_NB, LOCK_UN
+#include <unistd.h>     // close()
+#endif
 
 #include "storage/Types.h"
 #include "storage/Downsampler.h"
@@ -54,7 +60,11 @@ namespace pulsedb {
         sqlite3* m_db = nullptr;
 
         // os level lock, to prevent a second instance opening in the same directory
-        HANDLE m_lock_handle = INVALID_HANDLE_VALUE;
+        #ifdef _WIN32
+            HANDLE m_lock_handle = INVALID_HANDLE_VALUE;
+        #else
+            int m_lock_fd = -1;
+        #endif
         bool acquire_lock();
         void release_lock();
 
@@ -77,7 +87,7 @@ namespace pulsedb {
         void write_snapshot(const MetricSnapshot& snap);
 
         std::thread m_writer_thread;
-        
+
         // signals the writer thread to stop, it drains remaining queue items before it actually exits
         std::atomic<bool> m_writer_running{ false };
     };

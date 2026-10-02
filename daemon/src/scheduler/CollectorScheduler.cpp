@@ -1,24 +1,24 @@
 #include <iostream>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
 #include "CollectorScheduler.h"
 #include "CpuCollector.h"
-#include "RamCollector.h"
 #include "DiskCollector.h"
 #include "NetworkCollector.h"
-#include "ProcessCollector.h"
-#include "SystemMetricsCollector.h"
 #include "PowerCollector.h"
+#include "ProcessCollector.h"
+#include "RamCollector.h"
+#include "SystemMetricsCollector.h"
 
 namespace pulsedb {
-    // sets up the asio context and timer, creates all collectors
-    CollectorScheduler::CollectorScheduler(SpscQueue<MetricSnapshot, 1024>& queue, RingBuffer<MetricSnapshot, 300>& ring, int interval_ms) :
-        m_io(),
-        m_timer(m_io),
-        m_queue(queue),
-        m_ring(ring),
-        m_interval(interval_ms),
-        m_running(false)
-    {
+    // sets up the asio context, timer and signal handling, creates all collectors
+    CollectorScheduler::CollectorScheduler(SpscQueue<MetricSnapshot, 1024>& queue, RingBuffer<MetricSnapshot, 300>& ring, int interval_ms)
+        : m_io(), m_timer(m_io), m_signals(m_io, SIGINT, SIGTERM), m_queue(queue), m_ring(ring), m_interval(interval_ms), m_running(false) {
         // adding all collectors (order doesn't matter)
         m_collectors.push_back(std::make_unique<CpuCollector>());
         m_collectors.push_back(std::make_unique<RamCollector>());
@@ -35,30 +35,46 @@ namespace pulsedb {
         }
     }
 
-    // pre-sizes the snapshot vectors based on actual hardware then starts the first tick
+    // pre-sizes the snapshot vectors based on actual hardware, arms signal handling, then starts the first tick
     void CollectorScheduler::start() {
         m_running = true;
 
-        // gets amount of processors we have from windows to pre allocate the per core vectors
-        DWORD core_count = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
-        if (core_count == 0) core_count = 1;
-        m_snapshot.reserve(static_cast<int>(core_count), 4, 4, 25);
+        // gets the logical core count to pre allocate the per core vectors
+#ifdef _WIN32
+        DWORD n = GetActiveProcessorCount(ALL_PROCESSOR_GROUPS);
+        int core_count = n > 0 ? static_cast<int>(n) : 1;
+#else
+        long n = sysconf(_SC_NPROCESSORS_ONLN);
+        int core_count = n > 0 ? static_cast<int>(n) : 1;
+#endif
+        m_snapshot.reserve(core_count, 4, 4, 25);
+
+        // ctrl+c / kill -> clean stop instead of dying mid write
+        m_signals.async_wait([this](const boost::system::error_code& ec, int) {
+            if (!ec)
+                stop();
+        });
+
         tick();
     }
 
-    // cancels the timer, joins the io thread, then shuts down all collectors
+    // cancels the timer and signals, shuts down collectors on the io thread, joins the io thread if there is one
     void CollectorScheduler::stop() {
         m_running = false;
-        boost::asio::post(m_io, [this]() { m_timer.cancel(); });
-        if (m_io_thread.joinable()) m_io_thread.join();
-        for (auto& c : m_collectors) {
-            c->shutdown();
-        }
+        // done on the io thread so shutdown cant close a collectors files mid tick
+        boost::asio::post(m_io, [this]() {
+            m_timer.cancel();
+            m_signals.cancel();
+            for (auto& c : m_collectors) {
+                c->shutdown();
+            }
+        });
+        // signal handler runs on the io thread itself, joining yourself would throw
+        if (m_io_thread.joinable() && std::this_thread::get_id() != m_io_thread.get_id())
+            m_io_thread.join();
     }
 
-    void CollectorScheduler::run() {
-        m_io.run();
-    }
+    void CollectorScheduler::run() { m_io.run(); }
 
     void CollectorScheduler::run_async() {
         m_io_thread = std::thread([this]() { m_io.run(); });
@@ -103,8 +119,9 @@ namespace pulsedb {
             m_timer.expires_after(m_interval - duration);
         }
         m_timer.async_wait([this](const boost::system::error_code& ec) {
-            if (ec) return;
+            if (ec)
+                return;
             tick();
-         });
+        });
     }
-}
+} // namespace pulsedb

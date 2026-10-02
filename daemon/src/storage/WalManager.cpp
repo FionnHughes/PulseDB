@@ -1,6 +1,7 @@
 // needed to set XXH32_state_t as a complete type so we can stack-allocate it errors otherwise
 #define XXH_STATIC_LINKING_ONLY
 #include <xxhash.h>
+#include <cstring>
 
 #include "WalManager.h"
 
@@ -49,7 +50,7 @@ namespace pulsedb{
 			std::vector<uint8_t> chunk(entry.chunk_data_size);
 			in.read(reinterpret_cast<char*>(chunk.data()), entry.chunk_data_size);
 			if (in.gcount() < static_cast<std::streamsize>(entry.chunk_data_size)) break;
-			
+
 			uint32_t stored_checksum = 0;
 			in.read(reinterpret_cast<char*>(&stored_checksum), sizeof(stored_checksum));
 			if (in.gcount() < static_cast<std::streamsize>(sizeof(stored_checksum))) break;
@@ -167,4 +168,3 @@ namespace pulsedb{
 	}
 
 }
-

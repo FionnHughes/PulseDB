@@ -1,27 +1,22 @@
-#include <iostream>
 #include <filesystem>
-#include <windows.h>
+#include <iostream>
 
-#include "common/Config.h"
-#include "storage/StorageEngine.h"
-#include "storage/RetentionManager.h"
-#include "collector/CollectorScheduler.h"
-#include "collector/MetricSnapshot.h"
-#include "queue/SpscQueue.h"
-#include "queue/RingBuffer.h"
-#include "api/ApiServer.h"
 #include "alerts/AlertEngine.h"
+#include "api/ApiServer.h"
+#include "collector/MetricSnapshot.h"
+#include "common/Config.h"
+#include "queue/RingBuffer.h"
+#include "queue/SpscQueue.h"
+#include "scheduler/CollectorScheduler.h"
+#include "storage/RetentionManager.h"
+#include "storage/StorageEngine.h"
 
 int main() {
     pulsedb::Config config = pulsedb::load_config();
 
     std::filesystem::create_directories(config.data_directory);
 
-    pulsedb::RetentionConfig retention{
-    config.retention_raw_days,
-    config.retention_1min_days,
-    config.retention_1hr_days
-    };
+    pulsedb::RetentionConfig retention{ config.retention_raw_days, config.retention_1min_days, config.retention_1hr_days };
 
     pulsedb::StorageEngine storage(config.data_directory, retention);
     // if storage fails to open, nothing works so exit immediately
@@ -61,12 +56,13 @@ int main() {
     // starting the api server after collectors
     api.start();
 
-    // alert engine needs a few ticks of real data in the ring before it's worth evaluating, but starting it right away is fine, it just skips ticks where the ring's still empty
+    // alert engine needs a few ticks of real data in the ring before it's worth evaluating, but starting it right away is fine, it just skips ticks where the
+    // ring's still empty
     alerts.start();
 
     api.set_alert_engine(&alerts);
 
-    std::cout << "PulseDB daemon running. Close window to exit.\n";
+    std::cout << "PulseDB daemon running. Ctrl+C to stop.\n";
     // runs the asio event loop on this thread until stop() is called
     scheduler.run();
     std::cout << "main: scheduler.run() returned\n";
