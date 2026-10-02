@@ -9,7 +9,15 @@
 #include "common/Utils.h"
 
 namespace pulsedb {
-	// returns name just in case i forget this obscure function
+	
+	// checks for real adaptors, not filter-driver layers
+	static bool is_reportable(const MIB_IF_ROW2& row) {
+		return row.Type != IF_TYPE_SOFTWARE_LOOPBACK
+			&& row.Type != IF_TYPE_TUNNEL
+			&& !row.InterfaceAndOperStatusFlags.FilterInterface
+			&& row.OperStatus == IfOperStatusUp;
+	}
+
 	std::string NetworkCollector::name() const {
 		return "network";
 	}
@@ -37,7 +45,7 @@ namespace pulsedb {
 		// seeds m_prev for every physical adapter so the first real collect() has deltas to compare against
 		for (ULONG i = 0; i < table->NumEntries; i++) {
 			const auto& row = table->Table[i];
-			if (row.Type == IF_TYPE_SOFTWARE_LOOPBACK || row.Type == IF_TYPE_TUNNEL) {
+			if (!is_reportable(row)) {
 				continue;
 			}
 			PrevCounters counter {
@@ -77,7 +85,7 @@ namespace pulsedb {
 
 		for (ULONG i = 0; i < table->NumEntries; i++) {
 			const auto& row = table->Table[i];
-			if (row.Type == IF_TYPE_SOFTWARE_LOOPBACK || row.Type == IF_TYPE_TUNNEL) {
+			if (!is_reportable(row)) {
 				continue;
 			}
 			uint64_t luid = row.InterfaceLuid.Value;
